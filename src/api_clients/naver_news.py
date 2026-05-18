@@ -7,8 +7,9 @@
   - 개발사업   : 신도시·산업단지·혁신도시·택지지구
 
 설계 원칙:
-  - 네이버 검색 결과의 관련도(relevance)를 신뢰 → blob 키워드 매칭 제거
-  - 도시명이 제목에 포함되는지 우선 확인 → 노이즈 최소화
+  - 검색 쿼리: '서구', '남구' 처럼 여러 광역시에 존재하는 구 단위 도시는
+    시도 약칭을 붙여 '부산 서구'로 검색 → 다른 지역 기사 혼입 방지
+  - 필터: 제목에 도시 식별명이 포함된 기사만 수집 (설명문 fallback 제거)
   - 카테고리별로 여러 검색어(유의어·다른 표현) 사용 → 누락 최소화
 """
 from __future__ import annotations
@@ -73,19 +74,48 @@ SEARCH_GROUPS: dict[str, list[str]] = {
 }
 
 
-def _city_variants(name: str) -> list[str]:
-    """'수원시' → ['수원시', '수원'] 처럼 단축 변형 반환."""
-    variants = [name]
-    for suffix in ("특별시", "광역시", "특별자치시", "특별자치도", "시", "군", "구"):
-        if name.endswith(suffix) and len(name) > len(suffix) + 1:
-            short = name[: -len(suffix)]
+def _sido_short(sido: str) -> str:
+    """시도 전체명 → 약칭. '경기도' → '경기', '부산광역시' → '부산'"""
+    return (sido
+            .replace("특별시", "")
+            .replace("광역시", "")
+            .replace("특별자치시", "")
+            .replace("특별자치도", "")
+            .replace("도", "")
+            .strip())
+
+
+def _city_search_name(city) -> str:
+    """검색 쿼리에 사용할 도시 식별명.
+
+    '서구', '남구' 처럼 여러 광역시에 중복되는 구 단위 이름은
+    시도 약칭을 붙여 '부산 서구' 형태로 반환 → 다른 지역 혼입 방지.
+    그 외에는 도시명 그대로 ('수원시', '세종시' 등).
+    """
+    if city.name.endswith("구"):
+        return f"{_sido_short(city.sido)} {city.name}"
+    return city.name
+
+
+def _city_title_variants(city) -> list[str]:
+    """제목 매칭에 사용할 문자열 목록.
+
+    구 단위: ['부산 서구'] — 시도 포함으로 엄격하게 (다른 광역시 서구 배제).
+    그 외 : ['수원시', '수원'], ['세종시', '세종'] 등 단축 변형 포함.
+    """
+    if city.name.endswith("구"):
+        sido = _sido_short(city.sido)
+        return [f"{sido} {city.name}"]
+    variants = [city.name]
+    for suffix in ("특별시", "광역시", "특별자치시", "특별자치도", "시", "군"):
+        if city.name.endswith(suffix) and len(city.name) > len(suffix) + 1:
+            short = city.name[: -len(suffix)]
             if short not in variants:
                 variants.append(short)
             break
-    # 세종특별자치시 → 세종시, 세종 둘 다
-    if name == "세종시":
-        if "세종" not in variants:
-            variants.append("세종")
+    # 세종시 → '세종시', '세종' 둘 다
+    if city.name == "세종시" and "세종" not in variants:
+        variants.append("세종")
     return variants
 
 
@@ -105,9 +135,8 @@ def fetch_dev_news_recent(months: int = 12) -> list[dict]:
     seen_urls: set[str] = set()
 
     for city in cities_module.CITIES:
-        variants = _city_variants(city.name)
-        # 검색 쿼리에는 풀네임(variants[0]) 사용 — 단축명은 노이즈 유발
-        search_name = variants[0]
+        search_name = _city_search_name(city)       # 검색 쿼리용 (구 단위: "부산 서구")
+        match_variants = _city_title_variants(city)  # 제목 매칭용
 
         for category, queries in SEARCH_GROUPS.items():
             for q in queries:
@@ -131,14 +160,10 @@ def fetch_dev_news_recent(months: int = 12) -> list[dict]:
                         continue
 
                     title = _strip_tags(it.get("title", ""))
-                    desc  = _strip_tags(it.get("description", ""))
 
-                    # ① 제목에 도시명(또는 단축명) 중 하나가 포함되어야
-                    #    (본문은 검색 스니펫이라 불완전 — 제목 기준이 더 정확)
-                    if not any(v in title for v in variants):
-                        # 제목에 없으면 본문(설명)까지 확인
-                        if not any(v in desc for v in variants):
-                            continue
+                    # ① 제목에 도시 식별명이 포함되어야 (설명문 fallback 제거 — 노이즈 차단)
+                    if not any(v in title for v in match_variants):
+                        continue
 
                     # ② 제목이 너무 짧으면 노이즈
                     if len(title) < 8:
