@@ -106,8 +106,8 @@ def fetch_dev_news_recent(months: int = 12) -> list[dict]:
 
     for city in cities_module.CITIES:
         variants = _city_variants(city.name)
-        # 검색 쿼리에는 가장 짧은 이름(단축명) 사용
-        search_name = variants[-1]
+        # 검색 쿼리에는 풀네임(variants[0]) 사용 — 단축명은 노이즈 유발
+        search_name = variants[0]
 
         for category, queries in SEARCH_GROUPS.items():
             for q in queries:
