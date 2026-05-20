@@ -68,6 +68,18 @@ with st.sidebar:
 
     score_range = st.slider("최소 신호 충족 개수", min_value=0, max_value=4, value=3)
     hotspot_only = st.checkbox("활황 예상지역만 보기", value=False)
+
+    st.divider()
+    st.markdown("**🔎 특정 신호 보유 도시 검색**")
+    st.caption("선택한 신호를 모두 충족하는 도시만 표시")
+    signal_filter = st.multiselect(
+        "신호 선택",
+        options=list(SIGNAL_LABELS.keys()),
+        format_func=lambda k: SIGNAL_LABELS[k],
+        default=[],
+        label_visibility="collapsed",
+    )
+
     st.divider()
     st.caption("데이터 기준일: " + (df["evaluated_at"].max()[:10] if "evaluated_at" in df.columns else "—"))
 
@@ -77,6 +89,8 @@ if sel_sido != "전체":
 if hotspot_only:
     mask &= df["is_hotspot"] == 1
 mask &= df["total_score"] >= score_range
+for _sig_key in signal_filter:
+    mask &= df[_sig_key] == 1
 df_filtered = df[mask].copy()
 
 
@@ -175,6 +189,9 @@ hotspots = df_filtered.sort_values(
 if not hotspots.empty:
     if hotspot_only:
         section_title = f"🔥 활황 예상지역 ({len(hotspots)}개)"
+    elif signal_filter:
+        selected_labels = " + ".join(SIGNAL_LABELS[k] for k in signal_filter)
+        section_title = f"🔎 [{selected_labels}] 충족 도시 ({len(hotspots)}개)"
     else:
         section_title = f"📊 신호 {score_range}개 이상 충족 도시 ({len(hotspots)}개)"
     st.subheader(section_title)
