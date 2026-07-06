@@ -82,6 +82,10 @@ with st.sidebar:
 
     st.divider()
     st.caption("데이터 기준일: " + (df["evaluated_at"].max()[:10] if "evaluated_at" in df.columns else "—"))
+    if st.button("🔄 캐시 초기화 (데이터 갱신)", use_container_width=True):
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        st.rerun()
 
 mask = pd.Series([True] * len(df))
 if sel_sido != "전체":
