@@ -1,6 +1,6 @@
-"""Streamlit 공통 유틸 — DB 조회 캐시, 차트 팔레트 등.
+﻿"""Streamlit 공통 유틸 — DB 조회 캐시, 차트 팔레트 등.
 
-DB 갱신: 2026-05-18 (세종시 가격지수 수집, 뉴스 필터 개선)
+DB 갱신: 2026-07-06 (최신 데이터 갱신 및 가상환경 재설정)
 """
 from __future__ import annotations
 
@@ -164,3 +164,4 @@ def fmt_num(v: int | None) -> str:
     if v is None:
         return "—"
     return f"{v:,}"
+
