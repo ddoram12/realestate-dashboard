@@ -62,8 +62,36 @@ with st.sidebar:
     city_obj = next(c for c in CITIES if c.code == city_code)
 
     st.divider()
-    if st.button("← 메인 대시보드"):
+    if st.button("← 메인 대시보드", use_container_width=True):
         st.switch_page("Home.py")
+
+    signals_all = load_all_signals()
+    last_update_ts = (
+        max((s.get("evaluated_at") or "" for s in signals_all), default="")[:19].replace("T", " ")
+        if signals_all else "미수집"
+    )
+
+    st.divider()
+    st.subheader("🔄 데이터 관리")
+    st.markdown(f"🕒 **최종 업데이트**: `{last_update_ts}`")
+    if st.button("🔄 데이터 업데이트 실행", use_container_width=True, help="외부 API에서 최신 데이터를 수집하고 신호를 재계산합니다."):
+        with st.spinner("최신 데이터를 수집 및 분석하는 중입니다... 잠시만 기다려주세요 (약 20~30초 소요)."):
+            try:
+                import subprocess
+                res = subprocess.run(
+                    [sys.executable, "scripts/refresh_data.py", "--all"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    cwd=str(ROOT),
+                )
+                st.cache_data.clear()
+                st.success("데이터 업데이트가 성공적으로 완료되었습니다!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"업데이트 중 오류가 발생했습니다: {e}")
+
+
 
 
 # ── 도시 헤더 ─────────────────────────────────────────────────

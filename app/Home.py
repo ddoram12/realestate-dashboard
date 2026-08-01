@@ -68,8 +68,34 @@ with st.sidebar:
 
     score_range = st.slider("최소 신호 충족 개수", min_value=0, max_value=4, value=3)
     hotspot_only = st.checkbox("활황 예상지역만 보기", value=False)
+    last_update = (
+        df["evaluated_at"].max()[:19].replace("T", " ")
+        if "evaluated_at" in df.columns and not df.empty and df["evaluated_at"].notna().any()
+        else "미수집"
+    )
+
     st.divider()
-    st.caption("데이터 기준일: " + (df["evaluated_at"].max()[:10] if "evaluated_at" in df.columns else "—"))
+    st.subheader("🔄 데이터 관리")
+    st.markdown(f"🕒 **최종 업데이트**: `{last_update}`")
+    if st.button("🔄 데이터 업데이트 실행", use_container_width=True, help="외부 API에서 최신 데이터를 수집하고 신호를 재계산합니다."):
+        with st.spinner("최신 데이터를 수집 및 분석하는 중입니다... 잠시만 기다려주세요 (약 20~30초 소요)."):
+            try:
+                import subprocess
+                res = subprocess.run(
+                    [sys.executable, "scripts/refresh_data.py", "--all"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    cwd=str(ROOT),
+                )
+                st.cache_data.clear()
+                st.success("데이터 업데이트가 성공적으로 완료되었습니다!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"업데이트 중 오류가 발생했습니다: {e}")
+
+
+
 
 mask = pd.Series([True] * len(df))
 if sel_sido != "전체":

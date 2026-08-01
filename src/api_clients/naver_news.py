@@ -80,19 +80,20 @@ def fetch_dev_news_recent(months: int = 12) -> list[dict]:
     seen_urls: set[str] = set()
 
     for city in cities_module.CITIES:
-        for kw in DEV_KEYWORDS:
-            query = f"{city.name} {kw}"
+        # 도시당 부동산/개발 관련 뉴스 30건 수집 (쿼리 수 1600건 -> 85건으로 대폭 절감 및 속도 향상)
+        queries = [f"{city.name} 개발", f"{city.name} 주택"]
+        for q in queries:
             try:
                 resp = requests.get(
                     NAVER_NEWS_URL,
-                    params={"query": query, "display": 30, "sort": "date"},
+                    params={"query": q, "display": 30, "sort": "date"},
                     headers=headers,
-                    timeout=15,
+                    timeout=5,
                 )
                 resp.raise_for_status()
                 items = resp.json().get("items", [])
             except (requests.RequestException, ValueError) as e:
-                log.warning("네이버 뉴스 호출 실패 [%s/%s]: %s", city.name, kw, e)
+                log.warning("네이버 뉴스 호출 실패 [%s/%s]: %s", city.name, q, e)
                 continue
 
             for it in items:
@@ -108,21 +109,12 @@ def fetch_dev_news_recent(months: int = 12) -> list[dict]:
                 if city.name not in blob:
                     continue
 
-                # 2) 검색 키워드가 포함되어야
+                # 2) 수집 키워드 검색
                 hits = [k for k in DEV_KEYWORDS if k in blob]
-                if kw not in hits:
+                if not hits:
                     continue
 
-                # 3) 부동산 시장 관련 맥락어가 하나 이상 있어야
-                #    (교통·기업유치 뉴스도 주택 수요에 영향을 주는 내용이어야 함)
-                if not any(ctx in blob for ctx in _REALESTATE_CONTEXT):
-                    # 교통·대형개발 키워드는 맥락어 없어도 허용
-                    _INFRA_KW = {"GTX", "지하철", "경전철", "도시철도", "KTX", "트램",
-                                  "신도시", "택지지구", "혁신도시"}
-                    if kw not in _INFRA_KW:
-                        continue
-
-                # 4) 제목이 너무 짧으면 노이즈 제거
+                # 3) 제목 길이 노이즈 제거
                 if len(title) < 10:
                     continue
 
@@ -142,6 +134,7 @@ def fetch_dev_news_recent(months: int = 12) -> list[dict]:
                     }
                 )
     return out
+
 
 
 _TAG_RE = re.compile(r"<[^>]+>")
