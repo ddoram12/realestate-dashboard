@@ -173,43 +173,51 @@ with tab1:
 
     st.divider()
 
-    # 개발사업·기업유치·교통 뉴스 (카테고리별 최대 2건, 총 5건)
-    st.subheader("🏗️ 개발사업 · 기업유치 · 교통 호재 뉴스")
+    # 부동산 수요 신호 뉴스 (4개 카테고리, 각 최대 2건)
+    st.subheader("📰 부동산 수요 신호 뉴스 (최근 12개월)")
 
-    _TRANSPORT_KW  = {"GTX", "지하철", "경전철", "도시철도", "KTX", "트램"}
-    _DEVELOP_KW    = {"산업단지", "신도시", "택지지구", "공공주택지구", "혁신도시",
-                      "스마트시티", "도시개발"}
-    _CORPORATE_KW  = {"기업유치", "본사이전", "투자유치", "R&D센터", "데이터센터"}
+    # keyword_hits 첫 번째 토큰이 카테고리명
+    _CAT_ORDER  = ["기업유치", "인구증가", "교통개발", "개발사업"]
+    _CAT_LABEL  = {
+        "기업유치": "🏢 기업유치",
+        "인구증가": "👥 인구·세대 증가",
+        "교통개발": "🚆 교통 개발",
+        "개발사업": "🏗️ 개발사업",
+    }
+    _CAT_COLOR  = {
+        "기업유치": "#8E44AD",
+        "인구증가": "#27AE60",
+        "교통개발": "#2980B9",
+        "개발사업": "#E67E22",
+    }
 
-    def _category(kw_str: str) -> str | None:
-        kws = set(kw_str.split(","))
-        if kws & _TRANSPORT_KW:  return "교통"
-        if kws & _DEVELOP_KW:    return "개발사업"
-        if kws & _CORPORATE_KW:  return "기업유치"
-        return None
+    def _get_cat(kw_str: str) -> str:
+        """keyword_hits 첫 토큰을 카테고리로 반환."""
+        first = (kw_str or "").split(",")[0].strip()
+        return first if first in _CAT_ORDER else "개발사업"
 
     news_data = load_city_news(city_code)
     if news_data:
-        buckets: dict[str, list] = {"교통": [], "개발사업": [], "기업유치": []}
-        for n in news_data:
-            cat = _category(n.get("keyword_hits") or "")
-            if cat and len(buckets[cat]) < 2:
+        buckets: dict[str, list] = {c: [] for c in _CAT_ORDER}
+        for n in sorted(news_data,
+                        key=lambda x: x.get("published_at", ""), reverse=True):
+            cat = _get_cat(n.get("keyword_hits") or "")
+            if len(buckets[cat]) < 2:
                 buckets[cat].append(n)
 
         selected = []
-        for cat in ["교통", "개발사업", "기업유치"]:
+        for cat in _CAT_ORDER:
             selected.extend(buckets[cat])
-        selected = selected[:5]
 
         if selected:
-            cat_color = {"교통": "#2980B9", "개발사업": "#27AE60", "기업유치": "#8E44AD"}
             for n in selected:
-                cat = _category(n.get("keyword_hits") or "") or ""
-                pub = (n.get("published_at") or "")[:10]
-                color = cat_color.get(cat, "#7F8C8D")
+                cat  = _get_cat(n.get("keyword_hits") or "")
+                pub  = (n.get("published_at") or "")[:10]
+                color = _CAT_COLOR.get(cat, "#7F8C8D")
+                label = _CAT_LABEL.get(cat, cat)
                 cat_badge = (
-                    f'<span style="background:{color};color:white;padding:1px 8px;'
-                    f'border-radius:8px;font-size:0.75rem;margin-right:6px">{cat}</span>'
+                    f'<span style="background:{color};color:white;padding:2px 10px;'
+                    f'border-radius:8px;font-size:0.75rem;margin-right:6px">{label}</span>'
                 )
                 st.markdown(
                     f'{cat_badge}**[{n["title"]}]({n["url"]})**  '
@@ -217,7 +225,7 @@ with tab1:
                     unsafe_allow_html=True,
                 )
         else:
-            st.info("해당 도시의 대규모 개발·기업유치·교통 관련 뉴스가 없습니다.")
+            st.info("해당 도시의 기업유치·인구증가·교통·개발 관련 뉴스가 없습니다.")
     else:
         st.info("뉴스 데이터가 없습니다. (NAVER_CLIENT_ID 설정 또는 `--news` 실행 필요)")
 

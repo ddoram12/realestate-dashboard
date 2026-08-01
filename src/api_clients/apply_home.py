@@ -230,11 +230,16 @@ def _match_address_to_city(address: str) -> str | None:
         full = f"{c.sido} {c.name}"
         if full in address:
             return c.code
-    # 2) 광역시: sido 전체명이 주소에 포함 ("부산광역시 해운대구" → 26000)
+    # 2) 세종특별자치시: 기초자치단체가 없어 sido 만으로 매칭
+    if "세종특별자치시" in address:
+        for c in cities_module.CITIES:
+            if c.code == "36110":
+                return c.code
+    # 3) 광역시: sido 전체명이 주소에 포함 ("부산광역시 해운대구" → 26000)
     for c in cities_module.CITIES:
         if c.name == c.sido and c.sido in address:
             return c.code
-    # 3) 약식 시도명 + 시군구명 ("서울 강남구")
+    # 4) 약식 시도명 + 시군구명 ("서울 강남구")
     for c in cities_module.CITIES:
         sido_short = c.sido.replace("특별시", "").replace("광역시", "").replace("특별자치도", "").replace("특별자치시", "").replace("도", "")
         candidate = f"{sido_short} {c.name}".strip()
