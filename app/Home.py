@@ -80,19 +80,26 @@ with st.sidebar:
     if st.button("🔄 데이터 업데이트 실행", use_container_width=True, help="외부 API에서 최신 데이터를 수집하고 신호를 재계산합니다."):
         with st.spinner("최신 데이터를 수집 및 분석하는 중입니다... 잠시만 기다려주세요 (약 20~30초 소요)."):
             try:
-                import subprocess
-                res = subprocess.run(
-                    [sys.executable, "scripts/refresh_data.py", "--all"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                    cwd=str(ROOT),
-                )
+                from src import ingest as _ingest
+                summary = _ingest.run()
                 st.cache_data.clear()
-                st.success("데이터 업데이트가 성공적으로 완료되었습니다!")
+                st.cache_resource.clear()
+                st.session_state["_update_summary"] = summary
                 st.rerun()
             except Exception as e:
-                st.error(f"업데이트 중 오류가 발생했습니다: {e}")
+                st.error(f"업데이트 중 오류가 발생했습니다: {type(e).__name__}: {e}")
+
+# ── 데이터 업데이트 결과 안내 (있을 경우) ──────────────────────
+if "_update_summary" in st.session_state:
+    summary = st.session_state.pop("_update_summary")
+    ok_steps = {k: v for k, v in summary.items() if v >= 0}
+    fail_steps = {k: v for k, v in summary.items() if v < 0}
+    
+    if not fail_steps:
+        detail_msg = " · ".join([f"{k}: {v:,}건" for k, v in ok_steps.items()])
+        st.success(f"🎉 **데이터 업데이트가 완료되었습니다!** ({detail_msg})")
+    else:
+        st.warning(f"⚠️ **일부 항목 수집 완료**: 성공({', '.join(ok_steps.keys())}) / 실패 또는 키 누락({', '.join(fail_steps.keys())})")
 
 
 

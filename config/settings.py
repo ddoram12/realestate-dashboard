@@ -12,12 +12,26 @@ ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env", override=False)
 
 
+def _get_setting(key: str, default: str = "") -> str:
+    """os.getenv 우선, 없으면 streamlit.secrets 확인."""
+    val = os.getenv(key)
+    if val:
+        return val
+    try:
+        import streamlit as st
+        if key in st.secrets:
+            return str(st.secrets[key])
+    except Exception:
+        pass
+    return default
+
+
 # ─── API 인증키 ────────────────────────────────────────────────
-KOSIS_API_KEY: str = os.getenv("KOSIS_API_KEY", "")
-REB_API_KEY: str = os.getenv("REB_API_KEY", "")
-DATA_GO_KR_API_KEY: str = os.getenv("DATA_GO_KR_API_KEY", "")
-NAVER_CLIENT_ID: str = os.getenv("NAVER_CLIENT_ID", "")
-NAVER_CLIENT_SECRET: str = os.getenv("NAVER_CLIENT_SECRET", "")
+KOSIS_API_KEY: str = _get_setting("KOSIS_API_KEY")
+REB_API_KEY: str = _get_setting("REB_API_KEY")
+DATA_GO_KR_API_KEY: str = _get_setting("DATA_GO_KR_API_KEY")
+NAVER_CLIENT_ID: str = _get_setting("NAVER_CLIENT_ID")
+NAVER_CLIENT_SECRET: str = _get_setting("NAVER_CLIENT_SECRET")
 
 
 # ─── 데이터베이스 ──────────────────────────────────────────────
