@@ -146,7 +146,7 @@ with col_map:
     color_map = {"🔥 활황 예상": "#E74C3C", "관찰 중": "#3498DB"}
     size_map = df_map["total_score"].clip(lower=1) * 4 + 2
 
-    fig_map = px.scatter_mapbox(
+    fig_map = px.scatter_map(
         df_map,
         lat="lat",
         lon="lng",
@@ -164,7 +164,7 @@ with col_map:
         hovertemplate="%{customdata[0]}<extra></extra>"
     )
     fig_map.update_layout(
-        mapbox_style="carto-positron",
+        map_style="carto-positron",
         margin={"r": 0, "t": 0, "l": 0, "b": 0},
         legend_title_text="시장 상태",
     )
