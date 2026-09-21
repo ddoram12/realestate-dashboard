@@ -77,13 +77,37 @@ with st.sidebar:
     st.divider()
     st.subheader("🔄 데이터 관리")
     st.markdown(f"🕒 **최종 업데이트**: `{last_update}`")
+    st.caption("💡 매주 월요일 자동 갱신되며, 아래 버튼으로 지금 즉시 수집할 수도 있습니다.")
     if st.button("🔄 데이터 업데이트 실행", use_container_width=True, help="외부 API에서 최신 데이터를 수집하고 신호를 재계산합니다."):
-        with st.spinner("최신 데이터를 수집 및 분석하는 중입니다... 잠시만 기다려주세요 (약 20~30초 소요)."):
+        with st.spinner("최신 데이터를 수집 및 분석하는 중입니다... 잠시만 기다려주세요 (약 30~50초 소요)."):
             try:
                 from src import ingest as _ingest
                 summary = _ingest.run()
                 st.cache_data.clear()
                 st.cache_resource.clear()
+
+                # GitHub 토큰이 설정되어 있는 경우 원격 저장소에도 즉시 영구 저장
+                pushed = False
+                try:
+                    import os, subprocess
+                    token = os.getenv("GITHUB_TOKEN")
+                    if not token:
+                        try:
+                            token = st.secrets.get("GITHUB_TOKEN", "")
+                        except Exception:
+                            pass
+                    if token:
+                        remote_url = f"https://x-access-token:{token}@github.com/ddoram12/realestate-dashboard.git"
+                        subprocess.run(["git", "config", "user.name", "Streamlit App"], cwd=str(ROOT), check=False)
+                        subprocess.run(["git", "config", "user.email", "app@realestate-dashboard.local"], cwd=str(ROOT), check=False)
+                        subprocess.run(["git", "add", "data/realestate.db"], cwd=str(ROOT), check=False)
+                        subprocess.run(["git", "commit", "-m", "data: 웹 UI 데이터 업데이트"], cwd=str(ROOT), check=False)
+                        p_res = subprocess.run(["git", "push", remote_url, "main"], cwd=str(ROOT), capture_output=True, text=True, check=False)
+                        pushed = (p_res.returncode == 0)
+                except Exception:
+                    pass
+
+                summary["_pushed"] = pushed
                 st.session_state["_update_summary"] = summary
                 st.rerun()
             except Exception as e:
@@ -92,12 +116,13 @@ with st.sidebar:
 # ── 데이터 업데이트 결과 안내 (있을 경우) ──────────────────────
 if "_update_summary" in st.session_state:
     summary = st.session_state.pop("_update_summary")
+    pushed = summary.pop("_pushed", False)
     ok_steps = {k: v for k, v in summary.items() if v >= 0}
     fail_steps = {k: v for k, v in summary.items() if v < 0}
     
     if not fail_steps:
         detail_msg = " · ".join([f"{k}: {v:,}건" for k, v in ok_steps.items()])
-        st.success(f"🎉 **데이터 업데이트가 완료되었습니다!** ({detail_msg})")
+        st.success(f"🎉 **최신 데이터 업데이트 완료!** ({detail_msg})")
     else:
         st.warning(f"⚠️ **일부 항목 수집 완료**: 성공({', '.join(ok_steps.keys())}) / 실패 또는 키 누락({', '.join(fail_steps.keys())})")
 

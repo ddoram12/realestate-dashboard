@@ -1,10 +1,13 @@
-name: 월간 데이터 갱신
+name: 정기 데이터 갱신
 
 on:
   schedule:
-    # 매월 1일 오전 1시 UTC (한국시간 오전 10시)
-    - cron: '0 1 1 * *'
+    # 매주 월요일 오전 1시 UTC (한국시간 오전 10시)
+    - cron: '0 1 * * 1'
   workflow_dispatch:   # 수동 실행 버튼
+
+permissions:
+  contents: write
 
 jobs:
   refresh:
@@ -13,6 +16,9 @@ jobs:
     steps:
       - name: 코드 체크아웃
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
 
       - name: Python 3.11 설치
         uses: actions/setup-python@v5
@@ -38,6 +44,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/realestate.db
-          git diff --staged --quiet && echo "변경 없음" || \
-            git commit -m "data: 월간 데이터 갱신 $(date +'%Y-%m')"
-          git push
+          git diff --staged --quiet && echo "변경 없음" || (git commit -m "data: 정기 데이터 갱신 $(date +'%Y-%m-%d')" && git push)
