@@ -1,4 +1,4 @@
-﻿"""Streamlit 공통 유틸 — DB 조회 캐시, 차트 팔레트 등.
+"""Streamlit 공통 유틸 — DB 조회 캐시, 차트 팔레트 등.
 
 DB 갱신: 2026-07-06 (최신 데이터 갱신 및 가상환경 재설정)
 """
@@ -34,18 +34,18 @@ SIGNAL_LABELS = {
 
 
 # ─── DB 로딩 (캐시) ───────────────────────────────────────────
-@st.cache_resource
 def get_db_connection() -> sqlite3.Connection:
+    """항상 최신 DB 상태를 읽기 위해 연결을 생성."""
     from src.storage.db import DB_PATH
     con = sqlite3.connect(DB_PATH, check_same_thread=False)
     con.row_factory = sqlite3.Row
     return con
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def load_all_signals() -> list[dict]:
-    con = get_db_connection()
-    rows = models.fetch_signals(con)
+    with get_db_connection() as con:
+        rows = models.fetch_signals(con)
     out = []
     for r in rows:
         d = dict(r)
@@ -55,40 +55,40 @@ def load_all_signals() -> list[dict]:
     return out
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def load_city_population(city_code: str) -> list[dict]:
-    con = get_db_connection()
-    return [dict(r) for r in models.fetch_population(con, city_code)]
+    with get_db_connection() as con:
+        return [dict(r) for r in models.fetch_population(con, city_code)]
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def load_city_unsold(city_code: str) -> list[dict]:
-    con = get_db_connection()
-    return [dict(r) for r in models.fetch_unsold(con, city_code)]
+    with get_db_connection() as con:
+        return [dict(r) for r in models.fetch_unsold(con, city_code)]
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def load_city_supply(city_code: str) -> list[dict]:
-    con = get_db_connection()
-    return [dict(r) for r in models.fetch_supply(con, city_code)]
+    with get_db_connection() as con:
+        return [dict(r) for r in models.fetch_supply(con, city_code)]
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def load_city_subscription(city_code: str) -> list[dict]:
-    con = get_db_connection()
-    return [dict(r) for r in models.fetch_subscription(con, city_code)]
+    with get_db_connection() as con:
+        return [dict(r) for r in models.fetch_subscription(con, city_code)]
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def load_city_price(city_code: str) -> list[dict]:
-    con = get_db_connection()
-    return [dict(r) for r in models.fetch_price_index(con, city_code)]
+    with get_db_connection() as con:
+        return [dict(r) for r in models.fetch_price_index(con, city_code)]
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def load_city_news(city_code: str) -> list[dict]:
-    con = get_db_connection()
-    return [dict(r) for r in models.fetch_dev_news(con, city_code)]
+    with get_db_connection() as con:
+        return [dict(r) for r in models.fetch_dev_news(con, city_code)]
 
 
 # ─── 접근 제한 (비밀번호 로그인) ─────────────────────────────

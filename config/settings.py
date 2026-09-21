@@ -13,7 +13,7 @@ load_dotenv(ROOT / ".env", override=False)
 
 
 def _get_setting(key: str, default: str = "") -> str:
-    """os.getenv 우선, 없으면 streamlit.secrets 확인."""
+    """os.getenv 우선, 없으면 streamlit.secrets 확인, 없으면 기본값."""
     val = os.getenv(key)
     if val:
         return val
@@ -26,12 +26,27 @@ def _get_setting(key: str, default: str = "") -> str:
     return default
 
 
-# ─── API 인증키 ────────────────────────────────────────────────
-KOSIS_API_KEY: str = _get_setting("KOSIS_API_KEY")
-REB_API_KEY: str = _get_setting("REB_API_KEY")
-DATA_GO_KR_API_KEY: str = _get_setting("DATA_GO_KR_API_KEY")
-NAVER_CLIENT_ID: str = _get_setting("NAVER_CLIENT_ID")
-NAVER_CLIENT_SECRET: str = _get_setting("NAVER_CLIENT_SECRET")
+# ─── API 인증키 (환경변수/secrets 미설정 시 기본 승인키 자동 적용) ───
+KOSIS_API_KEY: str = _get_setting(
+    "KOSIS_API_KEY",
+    "N2E0NGIxNzJkNzUzMTQxNGMxNjUyN2NmYmQxODNiZGE="
+)
+REB_API_KEY: str = _get_setting(
+    "REB_API_KEY",
+    "45f072f1067844ff87032366ad9afe6d"
+)
+DATA_GO_KR_API_KEY: str = _get_setting(
+    "DATA_GO_KR_API_KEY",
+    "63d3345040e3d1ec9d61007b3c4b2eb42809518a8b9a6ac878da359493303dc9"
+)
+NAVER_CLIENT_ID: str = _get_setting(
+    "NAVER_CLIENT_ID",
+    "PjNz8nnfafBnZUSRmJSh"
+)
+NAVER_CLIENT_SECRET: str = _get_setting(
+    "NAVER_CLIENT_SECRET",
+    "3r5025nHpz"
+)
 
 
 # ─── 데이터베이스 ──────────────────────────────────────────────

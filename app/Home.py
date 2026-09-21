@@ -78,7 +78,20 @@ with st.sidebar:
     st.subheader("🔄 데이터 관리")
     st.markdown(f"🕒 **최종 업데이트**: `{last_update}`")
     st.caption("💡 매주 월요일 자동 갱신되며, 아래 버튼으로 지금 즉시 수집할 수도 있습니다.")
-    if st.button("🔄 데이터 업데이트 실행", use_container_width=True, help="외부 API에서 최신 데이터를 수집하고 신호를 재계산합니다."):
+    
+    col_u1, col_u2 = st.columns([1, 1])
+    with col_u1:
+        btn_refresh = st.button("🔄 즉시 수집", use_container_width=True, help="외부 API에서 최신 데이터를 수집하고 신호를 재계산합니다.")
+    with col_u2:
+        btn_clear_cache = st.button("🧹 화면 새로고침", use_container_width=True, help="저장된 화면 캐시를 비우고 최신 DB를 즉시 다시 불러옵니다.")
+
+    if btn_clear_cache:
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        st.success("캐시가 초기화되었습니다!")
+        st.rerun()
+
+    if btn_refresh:
         with st.spinner("최신 데이터를 수집 및 분석하는 중입니다... 잠시만 기다려주세요 (약 30~50초 소요)."):
             try:
                 from src import ingest as _ingest
