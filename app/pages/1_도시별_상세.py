@@ -35,6 +35,7 @@ from app.utils import (  # noqa: E402
 )
 from config.cities import CITIES  # noqa: E402
 from config.reb_cls_map import REB_CLS_TO_CITY  # noqa: E402
+from src.pdf_generator import generate_city_pdf  # noqa: E402
 
 st.set_page_config(
     page_title="도시별 상세 분석",
@@ -109,7 +110,42 @@ with st.sidebar:
 signals_all = load_all_signals()
 sig = next((s for s in signals_all if s["city_code"] == city_code), None)
 
-st.title(f"🔍 {city_obj.sido} {city_obj.name}")
+pop_data = load_city_population(city_code)
+news_data = load_city_news(city_code)
+unsold_data = load_city_unsold(city_code)
+supply_data = load_city_supply(city_code)
+sub_data = load_city_subscription(city_code)
+price_data = load_city_price(city_code)
+
+# PDF 보고서 사전 생성 (다운로드 버튼용)
+try:
+    pdf_bytes = generate_city_pdf(
+        city_obj=city_obj,
+        sig=sig,
+        pop_data=pop_data,
+        news_data=news_data,
+        unsold_data=unsold_data,
+        supply_data=supply_data,
+        sub_data=sub_data,
+        price_data=price_data,
+    )
+except Exception as e:
+    pdf_bytes = None
+
+col_h1, col_h2 = st.columns([3, 1])
+with col_h1:
+    st.title(f"🔍 {city_obj.sido} {city_obj.name}")
+with col_h2:
+    st.write("")
+    if pdf_bytes:
+        st.download_button(
+            label="📄 전체 분석 PDF 다운로드",
+            data=pdf_bytes,
+            file_name=f"{city_obj.sido_short}_{city_obj.name}_부동산종합분석.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            help="수요, 공급, 현 상황, 종합 결론이 모두 포함된 A4 종합 보고서 PDF를 다운로드합니다.",
+        )
 
 if sig:
     st.markdown(
@@ -697,4 +733,16 @@ with tab4:
             ---
             - **활황 예상지역(Hotspot) 최종 기준**: 필수 조건(가격 상승)을 포함하여 4개 신호 중 **3개 이상 충족** 시 선정.
             """
+        )
+
+    st.divider()
+    if pdf_bytes:
+        st.download_button(
+            label=f"📄 {city_obj.name} 전체 분석 보고서 PDF 다운로드",
+            data=pdf_bytes,
+            file_name=f"{city_obj.sido_short}_{city_obj.name}_부동산종합분석.pdf",
+            mime="application/pdf",
+            key="btn_pdf_tab4",
+            use_container_width=True,
+            help="수요, 공급, 현 상황, 종합 결론이 모두 포함된 A4 종합 보고서 PDF를 다운로드합니다.",
         )
