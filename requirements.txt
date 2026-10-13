@@ -11,3 +11,4 @@ scikit-learn>=1.4
 xmltodict>=0.13
 tenacity>=8.2
 reportlab>=4.0
+matplotlib>=3.8

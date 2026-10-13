@@ -1,8 +1,9 @@
 """도시별 종합 분석 보고서 PDF 생성 모듈.
 
-ReportLab을 사용하여 한글 폰트(HYGothic-Medium) 기반의
-수요(인구/세대수 그래프), 공급(미분양/입주물량 막대그래프),
-현 상황(가격지수 추이선), 종합 결론을 모두 포함하는 완성형 A4 보고서 PDF를 생성합니다.
+Matplotlib(Headless)을 사용하여 웹 화면의 기존 4대 핵심 차트
+(1. 세대수 추이선, 2. 월별 미분양 막대, 3. 연도별 공급 실적/예정 막대, 4. 매매/전세 가격지수 추이선)
+를 고해상도 PNG 이미지로 직접 렌더링한 후, ReportLab을 통해
+A4 규격의 깔끔한 한글 종합 PDF 문서에 안전하게 배치합니다.
 """
 from __future__ import annotations
 
@@ -10,9 +11,32 @@ import io
 from datetime import datetime
 from typing import Any
 
-# ReportLab 라이브러리 가용 여부 확인
-HAS_REPORTLAB = False
+# ReportLab & Matplotlib 임포트
+HAS_PDF_LIBS = False
 try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.font_manager as fm
+
+    # 한글 폰트 설정 (Windows, Linux, macOS 대응)
+    nanum_paths = fm.findSystemFonts(fontpaths=None, fontext="ttf")
+    for fp in nanum_paths:
+        if "nanum" in fp.lower() or "malgun" in fp.lower():
+            try:
+                fm.fontManager.addfont(fp)
+            except Exception:
+                pass
+
+    available_fonts = [f.name for f in fm.fontManager.ttflist]
+    chosen_font = "DejaVu Sans"
+    for candidate in ["Malgun Gothic", "NanumGothic", "NanumBarunGothic", "AppleGothic", "Noto Sans CJK KR", "Gulim", "Batang"]:
+        if candidate in available_fonts:
+            chosen_font = candidate
+            break
+    matplotlib.rcParams["font.family"] = chosen_font
+    matplotlib.rcParams["axes.unicode_minus"] = False
+
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -21,6 +45,7 @@ try:
     from reportlab.pdfbase.cidfonts import UnicodeCIDFont
     from reportlab.platypus import (
         HRFlowable,
+        Image as RLImage,
         KeepTogether,
         Paragraph,
         SimpleDocTemplate,
@@ -28,9 +53,6 @@ try:
         Table,
         TableStyle,
     )
-    from reportlab.graphics.shapes import Drawing, String, Rect, Line
-    from reportlab.graphics.charts.linecharts import HorizontalLineChart
-    from reportlab.graphics.charts.barcharts import VerticalBarChart
 
     # 한글 CID 폰트 등록
     FONT_NAME = "HYGothic-Medium"
@@ -38,9 +60,10 @@ try:
         pdfmetrics.registerFont(UnicodeCIDFont(FONT_NAME))
     except Exception:
         FONT_NAME = "Helvetica"
-    HAS_REPORTLAB = True
-except ImportError:
-    HAS_REPORTLAB = False
+
+    HAS_PDF_LIBS = True
+except Exception:
+    HAS_PDF_LIBS = False
 
 
 def _fmt_rate(v: float | None) -> str:
@@ -55,158 +78,168 @@ def _fmt_num(v: int | float | None) -> str:
     return f"{int(v):,}세대" if isinstance(v, (int, float)) else str(v)
 
 
-def _build_pop_chart(pop_data: list[dict]) -> Drawing | None:
-    """인구·세대수 추이 꺾은선 차트 Drawing 생성."""
+# ── 차트 이미지 생성 함수 (Matplotlib) ──────────────────────────
+
+def _render_pop_chart(pop_data: list[dict]) -> io.BytesIO | None:
+    """인구·세대수 추이 그래프 렌더링."""
     if not pop_data or len(pop_data) < 2:
         return None
-    # 시간 오름차순 정렬 (최근 최대 12개월)
-    sorted_pop = sorted(pop_data, key=lambda x: x.get("ym", ""))[-12:]
-    
-    cat_names = [f"{r['ym'][2:4]}.{r['ym'][4:]}" for r in sorted_pop]
-    pop_vals = [r.get("population") or 0 for r in sorted_pop]
-    hh_vals = [r.get("households") or 0 for r in sorted_pop]
+    try:
+        sorted_pop = sorted(pop_data, key=lambda x: x.get("ym", ""))[-12:]
+        ym_labels = [f"{r['ym'][2:4]}.{r['ym'][4:]}" for r in sorted_pop]
+        hh_vals = [r.get("households") or 0 for r in sorted_pop]
+        pop_vals = [r.get("population") or 0 for r in sorted_pop]
 
-    # 세대수 차트 생성
-    d = Drawing(510, 115)
-    
-    # 타이틀
-    title = String(40, 100, "■ 세대수 추이 (최근 추이)", fontName=FONT_NAME, fontSize=9, fillColor=colors.HexColor("#2C3E50"))
-    d.add(title)
+        fig, ax1 = plt.subplots(figsize=(6.5, 2.2), dpi=150)
+        fig.patch.set_facecolor("#FAFAFA")
+        ax1.set_facecolor("#FFFFFF")
 
-    chart = HorizontalLineChart()
-    chart.x = 55
-    chart.y = 20
-    chart.height = 70
-    chart.width = 430
-    chart.data = [hh_vals]
-    chart.categoryAxis.categoryNames = cat_names
-    chart.categoryAxis.labels.fontName = FONT_NAME
-    chart.categoryAxis.labels.fontSize = 7
-    chart.categoryAxis.labels.dy = -10
-    
-    min_v = min(hh_vals) if hh_vals else 0
-    max_v = max(hh_vals) if hh_vals else 100
-    chart.valueAxis.valueMin = max(0, min_v - (max_v - min_v) * 0.2 if max_v > min_v else min_v * 0.9)
-    chart.valueAxis.valueMax = max_v + (max_v - min_v) * 0.2 if max_v > min_v else max_v * 1.1
-    chart.valueAxis.labels.fontName = FONT_NAME
-    chart.valueAxis.labels.fontSize = 7
-    
-    chart.lines[0].strokeColor = colors.HexColor("#2ECC71")
-    chart.lines[0].strokeWidth = 2
-    d.add(chart)
-    return d
+        color_hh = "#2ECC71"
+        ax1.plot(ym_labels, hh_vals, color=color_hh, marker="o", markersize=4, lw=2, label="세대수")
+        ax1.set_ylabel("세대수", color=color_hh, fontsize=8)
+        ax1.tick_params(axis="y", labelcolor=color_hh, labelsize=7)
+        ax1.tick_params(axis="x", rotation=30, labelsize=7)
+        ax1.grid(True, linestyle="--", alpha=0.4)
+
+        if any(pop_vals):
+            ax2 = ax1.twinx()
+            color_pop = "#3498DB"
+            ax2.plot(ym_labels, pop_vals, color=color_pop, marker="s", markersize=3, lw=1.5, linestyle=":", label="인구수")
+            ax2.set_ylabel("인구(명)", color=color_pop, fontsize=8)
+            ax2.tick_params(axis="y", labelcolor=color_pop, labelsize=7)
+
+        plt.title("월별 인구 및 세대수 추이", fontsize=9, fontweight="bold", pad=8)
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return buf
+    except Exception:
+        return None
 
 
-def _build_unsold_chart(unsold_data: list[dict]) -> Drawing | None:
-    """월별 미분양 현황 막대 차트 Drawing 생성."""
+def _render_unsold_chart(unsold_data: list[dict]) -> io.BytesIO | None:
+    """월별 미분양 주택 현황 막대 그래프 렌더링."""
     if not unsold_data:
         return None
-    sorted_u = sorted(unsold_data, key=lambda x: x.get("ym", ""))[-10:]
-    cat_names = [f"{r['ym'][2:4]}.{r['ym'][4:]}" for r in sorted_u]
-    u_vals = [r.get("before_completion") or 0 for r in sorted_u]
+    try:
+        sorted_u = sorted(unsold_data, key=lambda x: x.get("ym", ""))[-10:]
+        ym_labels = [f"{r['ym'][2:4]}.{r['ym'][4:]}" for r in sorted_u]
+        u_vals = [r.get("before_completion") or 0 for r in sorted_u]
 
-    d = Drawing(510, 115)
-    title = String(40, 100, "■ 월별 미분양 주택 현황 (호)", fontName=FONT_NAME, fontSize=9, fillColor=colors.HexColor("#2C3E50"))
-    d.add(title)
+        fig, ax = plt.subplots(figsize=(6.5, 2.0), dpi=150)
+        fig.patch.set_facecolor("#FAFAFA")
+        ax.set_facecolor("#FFFFFF")
 
-    chart = VerticalBarChart()
-    chart.x = 45
-    chart.y = 20
-    chart.height = 70
-    chart.width = 440
-    chart.data = [u_vals]
-    chart.categoryAxis.categoryNames = cat_names
-    chart.categoryAxis.labels.fontName = FONT_NAME
-    chart.categoryAxis.labels.fontSize = 7
-    chart.categoryAxis.labels.dy = -10
+        bars = ax.bar(ym_labels, u_vals, color="#E67E22", width=0.55, edgecolor="#D35400", label="미분양(호)")
+        ax.set_ylabel("호수", fontsize=8)
+        ax.tick_params(axis="x", rotation=30, labelsize=7)
+        ax.tick_params(axis="y", labelsize=7)
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
 
-    max_v = max(u_vals) if u_vals else 10
-    chart.valueAxis.valueMin = 0
-    chart.valueAxis.valueMax = max(10, max_v * 1.25)
-    chart.valueAxis.labels.fontName = FONT_NAME
-    chart.valueAxis.labels.fontSize = 7
+        for bar in bars:
+            height = bar.get_height()
+            if height > 0:
+                ax.annotate(f"{int(height)}",
+                            xy=(bar.get_x() + bar.get_width() / 2, height),
+                            xytext=(0, 2),
+                            textcoords="offset points",
+                            ha="center", va="bottom", fontsize=6.5)
 
-    chart.bars[0].fillColor = colors.HexColor("#E67E22")
-    chart.bars[0].strokeColor = colors.HexColor("#D35400")
-    d.add(chart)
-    return d
+        plt.title("월별 미분양 주택 현황 추이", fontsize=9, fontweight="bold", pad=8)
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return buf
+    except Exception:
+        return None
 
 
-def _build_supply_chart(supply_data: list[dict]) -> Drawing | None:
-    """연도별 공급 실적/예정 물량 막대 차트 Drawing 생성."""
+def _render_supply_chart(supply_data: list[dict]) -> io.BytesIO | None:
+    """연도별 공급 실적 및 예정 물량 막대 그래프 렌더링."""
     if not supply_data:
         return None
-    sorted_s = sorted(supply_data, key=lambda x: x.get("year", 0))
-    cat_names = [f"{r['year']}년" for r in sorted_s]
-    comp_vals = [r.get("completed_units") or 0 for r in sorted_s]
-    plan_vals = [r.get("planned_units") or 0 for r in sorted_s]
+    try:
+        sorted_s = sorted(supply_data, key=lambda x: x.get("year", 0))
+        years = [f"{r['year']}년" for r in sorted_s]
+        comp_vals = [r.get("completed_units") or 0 for r in sorted_s]
+        plan_vals = [r.get("planned_units") or 0 for r in sorted_s]
 
-    d = Drawing(510, 115)
-    title = String(40, 100, "■ 연도별 공급 실적(준공) 및 입주 예정 물량 (세대)", fontName=FONT_NAME, fontSize=9, fillColor=colors.HexColor("#2C3E50"))
-    d.add(title)
+        import numpy as np
+        x = np.arange(len(years))
+        width = 0.35
 
-    chart = VerticalBarChart()
-    chart.x = 45
-    chart.y = 20
-    chart.height = 70
-    chart.width = 440
-    chart.data = [comp_vals, plan_vals]
-    chart.categoryAxis.categoryNames = cat_names
-    chart.categoryAxis.labels.fontName = FONT_NAME
-    chart.categoryAxis.labels.fontSize = 7
-    chart.categoryAxis.labels.dy = -10
+        fig, ax = plt.subplots(figsize=(6.5, 2.0), dpi=150)
+        fig.patch.set_facecolor("#FAFAFA")
+        ax.set_facecolor("#FFFFFF")
 
-    max_v = max(max(comp_vals + [0]), max(plan_vals + [0]))
-    chart.valueAxis.valueMin = 0
-    chart.valueAxis.valueMax = max(100, max_v * 1.25)
-    chart.valueAxis.labels.fontName = FONT_NAME
-    chart.valueAxis.labels.fontSize = 7
+        ax.bar(x - width/2, comp_vals, width, label="준공 실적", color="#3498DB")
+        ax.bar(x + width/2, plan_vals, width, label="입주 예정", color="#BDC3C7")
 
-    chart.bars[0].fillColor = colors.HexColor("#3498DB")
-    chart.bars[1].fillColor = colors.HexColor("#BDC3C7")
-    d.add(chart)
-    return d
+        ax.set_ylabel("세대수", fontsize=8)
+        ax.set_xticks(x)
+        ax.set_xticklabels(years, fontsize=7.5)
+        ax.tick_params(axis="y", labelsize=7)
+        ax.legend(fontsize=7.5, loc="upper right")
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
+
+        plt.title("연도별 공급 실적 및 예정 물량", fontsize=9, fontweight="bold", pad=8)
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return buf
+    except Exception:
+        return None
 
 
-def _build_price_chart(price_data: list[dict]) -> Drawing | None:
-    """매매 및 전세가격지수 추이 꺾은선 차트 Drawing 생성."""
+def _render_price_chart(price_data: list[dict]) -> io.BytesIO | None:
+    """매매 및 전세가격지수 추이 꺾은선 그래프 렌더링."""
     if not price_data or len(price_data) < 2:
         return None
-    sorted_p = sorted(price_data, key=lambda x: x.get("ym", ""))[-12:]
-    cat_names = [f"{r['ym'][2:4]}.{r['ym'][4:]}" for r in sorted_p]
-    sale_vals = [r.get("sale_index") or 100.0 for r in sorted_p]
-    jeonse_vals = [r.get("jeonse_index") or 100.0 for r in sorted_p]
+    try:
+        sorted_p = sorted(price_data, key=lambda x: x.get("ym", ""))[-12:]
+        ym_labels = [f"{r['ym'][2:4]}.{r['ym'][4:]}" for r in sorted_p]
+        sale_vals = [r.get("sale_index") for r in sorted_p]
+        jeonse_vals = [r.get("jeonse_index") for r in sorted_p]
 
-    d = Drawing(510, 120)
-    title = String(40, 105, "■ 아파트 매매(빨강)·전세(파랑) 가격지수 추이", fontName=FONT_NAME, fontSize=9, fillColor=colors.HexColor("#2C3E50"))
-    d.add(title)
+        fig, ax = plt.subplots(figsize=(6.5, 2.1), dpi=150)
+        fig.patch.set_facecolor("#FAFAFA")
+        ax.set_facecolor("#FFFFFF")
 
-    chart = HorizontalLineChart()
-    chart.x = 50
-    chart.y = 20
-    chart.height = 75
-    chart.width = 435
-    chart.data = [sale_vals, jeonse_vals]
-    chart.categoryAxis.categoryNames = cat_names
-    chart.categoryAxis.labels.fontName = FONT_NAME
-    chart.categoryAxis.labels.fontSize = 7
-    chart.categoryAxis.labels.dy = -10
+        if any(v is not None for v in sale_vals):
+            ax.plot(ym_labels, sale_vals, color="#E74C3C", marker="o", markersize=3.5, lw=1.8, label="매매가격지수")
+        if any(v is not None for v in jeonse_vals):
+            ax.plot(ym_labels, jeonse_vals, color="#3498DB", marker="s", markersize=3.5, lw=1.8, label="전세가격지수")
 
-    all_vals = sale_vals + jeonse_vals
-    min_v = min(all_vals) if all_vals else 95.0
-    max_v = max(all_vals) if all_vals else 105.0
-    chart.valueAxis.valueMin = min_v - (max_v - min_v) * 0.15 if max_v > min_v else min_v - 2
-    chart.valueAxis.valueMax = max_v + (max_v - min_v) * 0.15 if max_v > min_v else max_v + 2
-    chart.valueAxis.labels.fontName = FONT_NAME
-    chart.valueAxis.labels.fontSize = 7
+        ax.set_ylabel("가격지수", fontsize=8)
+        ax.tick_params(axis="x", rotation=30, labelsize=7)
+        ax.tick_params(axis="y", labelsize=7)
+        handles, labels = ax.get_legend_handles_labels()
+        if labels:
+            ax.legend(fontsize=7.5, loc="upper left")
+        ax.grid(True, linestyle="--", alpha=0.4)
 
-    chart.lines[0].strokeColor = colors.HexColor("#E74C3C")
-    chart.lines[0].strokeWidth = 2
-    chart.lines[1].strokeColor = colors.HexColor("#3498DB")
-    chart.lines[1].strokeWidth = 1.5
-    d.add(chart)
-    return d
+        plt.title("아파트 매매·전세 가격지수 추이 (한국부동산원)", fontsize=9, fontweight="bold", pad=8)
+        plt.tight_layout()
 
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return buf
+    except Exception:
+        return None
+
+
+# ── 메인 PDF 빌더 ──────────────────────────────────────────────
 
 def generate_city_pdf(
     city_obj: Any,
@@ -218,8 +251,8 @@ def generate_city_pdf(
     sub_data: list[dict],
     price_data: list[dict],
 ) -> bytes:
-    """도시의 수요, 공급, 현상황, 결론을 포함하는 종합 PDF 바이너리 반환."""
-    if not HAS_REPORTLAB:
+    """도시의 수요, 공급, 현상황, 결론과 4대 시각화 그래프를 모두 포함하는 종합 PDF 바이너리 반환."""
+    if not HAS_PDF_LIBS:
         return b""
 
     buffer = io.BytesIO()
@@ -228,8 +261,8 @@ def generate_city_pdf(
         pagesize=A4,
         leftMargin=14 * mm,
         rightMargin=14 * mm,
-        topMargin=13 * mm,
-        bottomMargin=13 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
     )
 
     styles = getSampleStyleSheet()
@@ -238,7 +271,7 @@ def generate_city_pdf(
         "PDFTitle",
         fontName=FONT_NAME,
         fontSize=18,
-        leading=24,
+        leading=23,
         textColor=colors.HexColor("#1A252F"),
         alignment=0,
     )
@@ -246,34 +279,34 @@ def generate_city_pdf(
     h1_style = ParagraphStyle(
         "PDFH1",
         fontName=FONT_NAME,
-        fontSize=12,
-        leading=16,
+        fontSize=11.5,
+        leading=15,
         textColor=colors.HexColor("#2C3E50"),
-        spaceBefore=8,
+        spaceBefore=7,
         spaceAfter=3,
     )
 
     body_style = ParagraphStyle(
         "PDFBody",
         fontName=FONT_NAME,
-        fontSize=8.5,
-        leading=12,
+        fontSize=8,
+        leading=11.5,
         textColor=colors.HexColor("#333333"),
     )
 
     small_style = ParagraphStyle(
         "PDFSmall",
         fontName=FONT_NAME,
-        fontSize=7.5,
-        leading=10,
+        fontSize=7,
+        leading=9.5,
         textColor=colors.HexColor("#7F8C8D"),
     )
 
     tbl_header_style = ParagraphStyle(
         "PDFTblHeader",
         fontName=FONT_NAME,
-        fontSize=8,
-        leading=10,
+        fontSize=7.5,
+        leading=9.5,
         textColor=colors.white,
         alignment=1,
     )
@@ -281,8 +314,8 @@ def generate_city_pdf(
     tbl_cell_style = ParagraphStyle(
         "PDFTblCell",
         fontName=FONT_NAME,
-        fontSize=7.5,
-        leading=10,
+        fontSize=7,
+        leading=9.5,
         textColor=colors.HexColor("#2C3E50"),
         alignment=1,
     )
@@ -290,8 +323,8 @@ def generate_city_pdf(
     tbl_cell_left = ParagraphStyle(
         "PDFTblCellLeft",
         fontName=FONT_NAME,
-        fontSize=7.5,
-        leading=10,
+        fontSize=7,
+        leading=9.5,
         textColor=colors.HexColor("#2C3E50"),
         alignment=0,
     )
@@ -312,8 +345,8 @@ def generate_city_pdf(
         ('ALIGN', (1,0), (1,0), 'RIGHT'),
     ]))
     story.append(t_head)
-    story.append(Spacer(1, 3 * mm))
-    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2980B9"), spaceAfter=4 * mm))
+    story.append(Spacer(1, 2 * mm))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2980B9"), spaceAfter=3 * mm))
 
     # 종합 판정 결과 배지 & 테이블
     score = int(sig.get("total_score", 0)) if sig else 0
@@ -339,20 +372,20 @@ def generate_city_pdf(
     t_sum.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F8F9FA")),
         ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#BDC3C7")),
-        ('PADDING', (0,0), (-1,-1), 5),
+        ('PADDING', (0,0), (-1,-1), 4),
     ]))
     story.append(t_sum)
-    story.append(Spacer(1, 3 * mm))
+    story.append(Spacer(1, 2 * mm))
 
     # ── 2. [수요 분석] ──────────────────────────────────────────
     story.append(Paragraph("<b>1. 수요 분석 (인구·세대수 그래프 및 개발 호재)</b>", h1_style))
     story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#BDC3C7"), spaceAfter=2 * mm))
     
-    # 세대수 차트
-    pop_chart = _build_pop_chart(pop_data)
-    if pop_chart:
-        story.append(pop_chart)
-        story.append(Spacer(1, 1 * mm))
+    # 세대수 차트 이미지 삽입
+    pop_chart_buf = _render_pop_chart(pop_data)
+    if pop_chart_buf:
+        story.append(RLImage(pop_chart_buf, width=180 * mm, height=58 * mm))
+        story.append(Spacer(1, 1.5 * mm))
 
     # 최근 6개월 인구·세대수 표
     pop_sorted = sorted(pop_data, key=lambda x: x.get("ym", ""), reverse=True)[:6]
@@ -378,13 +411,13 @@ def generate_city_pdf(
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#34495E")),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E0E0E0")),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#FDFDFD")]),
-            ('PADDING', (0,0), (-1,-1), 2.5),
+            ('PADDING', (0,0), (-1,-1), 2),
         ]))
         story.append(t_pop)
     else:
         story.append(Paragraph("수집된 인구/세대수 데이터가 없습니다.", body_style))
 
-    story.append(Spacer(1, 2 * mm))
+    story.append(Spacer(1, 1.5 * mm))
 
     # 주요 개발 뉴스 (최대 3건)
     if news_data:
@@ -400,11 +433,11 @@ def generate_city_pdf(
     story.append(Paragraph("<b>2. 공급 분석 (미분양 현황 및 향후 입주물량 그래프)</b>", h1_style))
     story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#BDC3C7"), spaceAfter=2 * mm))
 
-    # 미분양 차트
-    unsold_chart = _build_unsold_chart(unsold_data)
-    if unsold_chart:
-        story.append(unsold_chart)
-        story.append(Spacer(1, 1 * mm))
+    # 미분양 차트 이미지 삽입
+    unsold_chart_buf = _render_unsold_chart(unsold_data)
+    if unsold_chart_buf:
+        story.append(RLImage(unsold_chart_buf, width=180 * mm, height=52 * mm))
+        story.append(Spacer(1, 1.5 * mm))
 
     # 미분양 최근 6개월 표
     unsold_sorted = sorted(unsold_data, key=lambda x: x.get("ym", ""), reverse=True)[:6]
@@ -432,7 +465,7 @@ def generate_city_pdf(
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#E67E22")),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E0E0E0")),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#FDFDFD")]),
-            ('PADDING', (0,0), (-1,-1), 2.5),
+            ('PADDING', (0,0), (-1,-1), 2),
         ]))
         story.append(t_unsold)
     else:
@@ -440,11 +473,11 @@ def generate_city_pdf(
 
     story.append(Spacer(1, 2 * mm))
 
-    # 연도별 공급 차트
-    supply_chart = _build_supply_chart(supply_data)
-    if supply_chart:
-        story.append(supply_chart)
-        story.append(Spacer(1, 1 * mm))
+    # 연도별 공급 차트 이미지 삽입
+    supply_chart_buf = _render_supply_chart(supply_data)
+    if supply_chart_buf:
+        story.append(RLImage(supply_chart_buf, width=180 * mm, height=52 * mm))
+        story.append(Spacer(1, 1.5 * mm))
 
     # 연도별 공급 실적/예정 물량 표
     if supply_data:
@@ -467,7 +500,7 @@ def generate_city_pdf(
         t_sup.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2980B9")),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E0E0E0")),
-            ('PADDING', (0,0), (-1,-1), 2.5),
+            ('PADDING', (0,0), (-1,-1), 2),
         ]))
         story.append(t_sup)
     else:
@@ -479,11 +512,11 @@ def generate_city_pdf(
     story.append(Paragraph("<b>3. 현 상황 분석 (청약 경쟁률 및 가격지수 그래프)</b>", h1_style))
     story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#BDC3C7"), spaceAfter=2 * mm))
 
-    # 가격지수 차트
-    price_chart = _build_price_chart(price_data)
-    if price_chart:
-        story.append(price_chart)
-        story.append(Spacer(1, 1 * mm))
+    # 가격지수 차트 이미지 삽입
+    price_chart_buf = _render_price_chart(price_data)
+    if price_chart_buf:
+        story.append(RLImage(price_chart_buf, width=180 * mm, height=55 * mm))
+        story.append(Spacer(1, 1.5 * mm))
 
     # 최근 청약 단지 (최대 3건)
     if sub_data:
@@ -506,7 +539,7 @@ def generate_city_pdf(
         t_sub.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#27AE60")),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E0E0E0")),
-            ('PADDING', (0,0), (-1,-1), 2.5),
+            ('PADDING', (0,0), (-1,-1), 2),
         ]))
         story.append(t_sub)
     else:
@@ -530,7 +563,7 @@ def generate_city_pdf(
     t_concl.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F4F6F6")),
         ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#BDC3C7")),
-        ('PADDING', (0,0), (-1,-1), 5),
+        ('PADDING', (0,0), (-1,-1), 4),
     ]))
     story.append(t_concl)
 
