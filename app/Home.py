@@ -28,6 +28,7 @@ from app.utils import (  # noqa: E402
     require_auth,
     signal_badge,
 )
+from config.cities import CITIES, CITY_BY_LABEL, SIDO_SHORT_MAP  # noqa: E402
 
 # ── 페이지 설정 ───────────────────────────────────────────────
 st.set_page_config(
@@ -43,7 +44,7 @@ ensure_db()
 
 # ── 헤더 ──────────────────────────────────────────────────────
 st.title("🏙️ 전국 부동산 시장 분석 대시보드")
-st.caption("인구 5만 이상 전국 도시(106개) · 4개 신호 종합 평가 (수요·공급·청약·가격)")
+st.caption("인구 5만 이상 전국 도시 및 전국 모든 시(109개) · 4개 신호 종합 평가 (수요·공급·청약·가격)")
 
 
 # ── 데이터 로드 ───────────────────────────────────────────────
@@ -66,8 +67,26 @@ with st.sidebar:
     sidos = ["전체"] + sorted(df["sido"].unique().tolist())
     sel_sido = st.selectbox("광역시도", sidos)
 
-    score_range = st.slider("최소 신호 충족 개수", min_value=0, max_value=4, value=3)
+    score_range = st.slider("최소 신호 충족 개수", min_value=0, max_value=4, value=0, help="0으로 설정하면 영천시 등 충족 신호가 적은 모든 도시도 표시됩니다.")
     hotspot_only = st.checkbox("활황 예상지역만 보기", value=False)
+
+    st.divider()
+    st.header("🏙️ 도시 바로가기")
+    # 전체 도시 라벨 목록 (가나다 순)
+    all_city_labels = sorted([c.full_label for c in CITIES])
+    # 시도 선택이 되어있으면 해당 시도 도시를 기본 또는 좁혀서 표시
+    if sel_sido != "전체":
+        disp_city_labels = [c.full_label for c in CITIES if c.sido == sel_sido]
+    else:
+        disp_city_labels = all_city_labels
+
+    target_city_label = st.selectbox("상세 분석할 도시", disp_city_labels)
+    if st.button("👉 도시 상세 분석 보기", use_container_width=True):
+        c_obj = CITY_BY_LABEL.get(target_city_label)
+        if c_obj:
+            st.session_state["nav_city"] = c_obj.code
+            st.switch_page("pages/1_도시별_상세.py")
+
     last_update = (
         df["evaluated_at"].max()[:19].replace("T", " ")
         if "evaluated_at" in df.columns and not df.empty and df["evaluated_at"].notna().any()
@@ -181,7 +200,7 @@ with col_map:
     df_map["is_hotspot_label"] = df_map["is_hotspot"].map(
         {1: "🔥 활황 예상", 0: "관찰 중"}
     )
-    df_map["city_label"] = df_map["sido"].str[:2] + " " + df_map["name"]
+    df_map["city_label"] = df_map["sido"].map(lambda s: SIDO_SHORT_MAP.get(s, s[:2])) + " " + df_map["name"]
     df_map["hover"] = (
         df_map["city_label"]
         + "<br>신호: " + df_map["total_score"].astype(str) + "/4"

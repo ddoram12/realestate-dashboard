@@ -44,19 +44,28 @@ ensure_db()
 
 
 # ── 도시 선택 ─────────────────────────────────────────────────
-city_options = {f"{c.sido[:2]} {c.name}": c.code for c in CITIES}
-# session_state 우선(카드 클릭), 없으면 query_params(URL 직접 접근)
+all_sidos = ["전체"] + sorted(list({c.sido for c in CITIES}))
 presel_code = st.session_state.pop("nav_city", None) or st.query_params.get("city", "")
-presel_label = next(
-    (k for k, v in city_options.items() if v == presel_code), None
-)
+presel_city = next((c for c in CITIES if c.code == presel_code), None)
 
 with st.sidebar:
     st.header("🏙️ 도시 선택")
+    default_sido_idx = (all_sidos.index(presel_city.sido) if presel_city and presel_city.sido in all_sidos else 0)
+    sel_sido_filter = st.selectbox("지역(시도) 필터", all_sidos, index=default_sido_idx)
+
+    if sel_sido_filter == "전체":
+        filtered_cities = sorted(CITIES, key=lambda c: (c.sido, c.name))
+    else:
+        filtered_cities = sorted([c for c in CITIES if c.sido == sel_sido_filter], key=lambda c: c.name)
+
+    city_options = {c.full_label: c.code for c in filtered_cities}
+    presel_label = presel_city.full_label if presel_city and presel_city.full_label in city_options else None
+    sel_idx = list(city_options.keys()).index(presel_label) if presel_label else 0
+
     sel_label = st.selectbox(
         "도시",
         list(city_options.keys()),
-        index=list(city_options.keys()).index(presel_label) if presel_label else 0,
+        index=sel_idx,
     )
     city_code = city_options[sel_label]
     city_obj = next(c for c in CITIES if c.code == city_code)

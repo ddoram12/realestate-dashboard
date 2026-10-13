@@ -143,6 +143,13 @@ def _match_to_cities(raw: Iterable[dict]) -> Iterable[dict]:
         # 1) 5자리 시군구 코드 직접 매칭
         if c1 in cities_module.CITY_BY_CODE:
             code = c1
+        # 1-1) KOSIS 특수 시도코드 변환 (강원 51->42, 전북 52->45, 전남 12->46)
+        elif len(c1) == 5 and c1[:2] == "51" and ("42" + c1[2:]) in cities_module.CITY_BY_CODE:
+            code = "42" + c1[2:]
+        elif len(c1) == 5 and c1[:2] == "52" and ("45" + c1[2:]) in cities_module.CITY_BY_CODE:
+            code = "45" + c1[2:]
+        elif len(c1) == 5 and c1[:2] == "12" and ("46" + c1[2:]) in cities_module.CITY_BY_CODE:
+            code = "46" + c1[2:]
         # 2) 광역시·세종 2자리 시도코드 매칭
         elif c1 in _KOSIS_METRO_CODE:
             code = _KOSIS_METRO_CODE[c1]
