@@ -14,13 +14,25 @@ from typing import Any
 # ReportLab & Matplotlib 임포트
 HAS_PDF_LIBS = False
 try:
+    from pathlib import Path
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import matplotlib.font_manager as fm
 
-    # Matplotlib 폰트 및 백엔드 설정 (어떤 OS에서도 폰트 오류 없이 작동)
-    matplotlib.rcParams["font.family"] = "sans-serif"
+    # 프로젝트 내 번들 폰트 경로 (Linux/Windows/macOS 동일 적용)
+    FONT_PATH = Path(__file__).resolve().parent.parent / "assets" / "fonts" / "NanumGothic.ttf"
+
+    FONT_FAMILY = "sans-serif"
+    if FONT_PATH.exists():
+        try:
+            fm.fontManager.addfont(str(FONT_PATH))
+            font_prop = fm.FontProperties(fname=str(FONT_PATH))
+            FONT_FAMILY = font_prop.get_name()
+        except Exception:
+            pass
+
+    matplotlib.rcParams["font.family"] = FONT_FAMILY
     matplotlib.rcParams["axes.unicode_minus"] = False
 
     from reportlab.lib import colors
@@ -29,6 +41,7 @@ try:
     from reportlab.lib.units import mm
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+    from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.platypus import (
         HRFlowable,
         Image as RLImage,
@@ -40,12 +53,20 @@ try:
         TableStyle,
     )
 
-    # 한글 CID 폰트 등록 (ReportLab 기본 한글)
+    # 한글 폰트 등록 (NanumGothic 번들 폰트 우선, 실패 시 ReportLab 기본 HYGothic)
     FONT_NAME = "HYGothic-Medium"
-    try:
-        pdfmetrics.registerFont(UnicodeCIDFont(FONT_NAME))
-    except Exception:
-        FONT_NAME = "Helvetica"
+    if FONT_PATH.exists():
+        try:
+            pdfmetrics.registerFont(TTFont("NanumGothic", str(FONT_PATH)))
+            FONT_NAME = "NanumGothic"
+        except Exception:
+            pass
+
+    if FONT_NAME != "NanumGothic":
+        try:
+            pdfmetrics.registerFont(UnicodeCIDFont(FONT_NAME))
+        except Exception:
+            FONT_NAME = "Helvetica"
 
     HAS_PDF_LIBS = True
 except Exception:
@@ -67,7 +88,7 @@ def _fmt_num(v: int | float | None) -> str:
 # ── 차트 이미지 생성 함수 (Matplotlib) ──────────────────────────
 
 def _render_pop_chart(pop_data: list[dict]) -> io.BytesIO | None:
-    """인구·세대수 추이 그래프 렌더링."""
+    """인구·세대수 추이 그래프 렌더링 (한글 지원)."""
     if not pop_data or len(pop_data) < 2:
         return None
     try:
@@ -81,8 +102,8 @@ def _render_pop_chart(pop_data: list[dict]) -> io.BytesIO | None:
         ax1.set_facecolor("#FFFFFF")
 
         color_hh = "#2ECC71"
-        ax1.plot(ym_labels, hh_vals, color=color_hh, marker="o", markersize=4, lw=2, label="Households")
-        ax1.set_ylabel("Households", color=color_hh, fontsize=8)
+        ax1.plot(ym_labels, hh_vals, color=color_hh, marker="o", markersize=4, lw=2, label="세대수")
+        ax1.set_ylabel("세대수(세대)", color=color_hh, fontsize=8)
         ax1.tick_params(axis="y", labelcolor=color_hh, labelsize=7)
         ax1.tick_params(axis="x", rotation=30, labelsize=7)
         ax1.grid(True, linestyle="--", alpha=0.35)
@@ -90,11 +111,11 @@ def _render_pop_chart(pop_data: list[dict]) -> io.BytesIO | None:
         if any(pop_vals):
             ax2 = ax1.twinx()
             color_pop = "#3498DB"
-            ax2.plot(ym_labels, pop_vals, color=color_pop, marker="s", markersize=3, lw=1.5, linestyle=":", label="Population")
-            ax2.set_ylabel("Population", color=color_pop, fontsize=8)
+            ax2.plot(ym_labels, pop_vals, color=color_pop, marker="s", markersize=3, lw=1.5, linestyle=":", label="인구수")
+            ax2.set_ylabel("인구(명)", color=color_pop, fontsize=8)
             ax2.tick_params(axis="y", labelcolor=color_pop, labelsize=7)
 
-        plt.title("Population & Households Trend", fontsize=9, fontweight="bold", pad=8)
+        plt.title("월별 인구 및 세대수 추이", fontsize=9, fontweight="bold", pad=8)
         plt.tight_layout()
 
         buf = io.BytesIO()
@@ -109,7 +130,7 @@ def _render_pop_chart(pop_data: list[dict]) -> io.BytesIO | None:
 
 
 def _render_unsold_chart(unsold_data: list[dict]) -> io.BytesIO | None:
-    """월별 미분양 주택 현황 막대 그래프 렌더링."""
+    """월별 미분양 주택 현황 막대 그래프 렌더링 (한글 지원)."""
     if not unsold_data:
         return None
     try:
@@ -121,8 +142,8 @@ def _render_unsold_chart(unsold_data: list[dict]) -> io.BytesIO | None:
         fig.patch.set_facecolor("#FAFAFA")
         ax.set_facecolor("#FFFFFF")
 
-        bars = ax.bar(ym_labels, u_vals, color="#E67E22", width=0.52, edgecolor="#D35400", label="Unsold Units")
-        ax.set_ylabel("Units", fontsize=8)
+        bars = ax.bar(ym_labels, u_vals, color="#E67E22", width=0.52, edgecolor="#D35400", label="미분양(호)")
+        ax.set_ylabel("미분양(호)", fontsize=8)
         ax.tick_params(axis="x", rotation=30, labelsize=7)
         ax.tick_params(axis="y", labelsize=7)
         ax.grid(axis="y", linestyle="--", alpha=0.35)
@@ -130,13 +151,13 @@ def _render_unsold_chart(unsold_data: list[dict]) -> io.BytesIO | None:
         for bar in bars:
             height = bar.get_height()
             if height > 0:
-                ax.annotate(f"{int(height):,}",
+                ax.annotate(f"{int(height):,}호",
                             xy=(bar.get_x() + bar.get_width() / 2, height),
                             xytext=(0, 2),
                             textcoords="offset points",
                             ha="center", va="bottom", fontsize=6.5)
 
-        plt.title("Monthly Unsold Housing Units Trend", fontsize=9, fontweight="bold", pad=8)
+        plt.title("월별 미분양 주택 현황 추이", fontsize=9, fontweight="bold", pad=8)
         plt.tight_layout()
 
         buf = io.BytesIO()
@@ -151,12 +172,12 @@ def _render_unsold_chart(unsold_data: list[dict]) -> io.BytesIO | None:
 
 
 def _render_supply_chart(supply_data: list[dict]) -> io.BytesIO | None:
-    """연도별 공급 실적 및 예정 물량 막대 그래프 렌더링."""
+    """연도별 공급 실적 및 예정 물량 막대 그래프 렌더링 (한글 지원)."""
     if not supply_data:
         return None
     try:
         sorted_s = sorted(supply_data, key=lambda x: x.get("year", 0))
-        years = [str(r["year"]) for r in sorted_s]
+        years = [f"{r['year']}년" for r in sorted_s]
         comp_vals = [r.get("completed_units") or 0 for r in sorted_s]
         plan_vals = [r.get("planned_units") or 0 for r in sorted_s]
 
@@ -168,17 +189,17 @@ def _render_supply_chart(supply_data: list[dict]) -> io.BytesIO | None:
         fig.patch.set_facecolor("#FAFAFA")
         ax.set_facecolor("#FFFFFF")
 
-        ax.bar(x - width/2, comp_vals, width, label="Completed", color="#3498DB")
-        ax.bar(x + width/2, plan_vals, width, label="Planned", color="#BDC3C7")
+        ax.bar(x - width/2, comp_vals, width, label="준공 실적", color="#3498DB")
+        ax.bar(x + width/2, plan_vals, width, label="입주 예정", color="#BDC3C7")
 
-        ax.set_ylabel("Units", fontsize=8)
+        ax.set_ylabel("세대수(호)", fontsize=8)
         ax.set_xticks(x)
         ax.set_xticklabels(years, fontsize=7.5)
         ax.tick_params(axis="y", labelsize=7)
         ax.legend(fontsize=7.5, loc="upper right")
         ax.grid(axis="y", linestyle="--", alpha=0.35)
 
-        plt.title("Annual Housing Supply (Completed vs Planned)", fontsize=9, fontweight="bold", pad=8)
+        plt.title("연도별 공급 실적 및 예정 물량", fontsize=9, fontweight="bold", pad=8)
         plt.tight_layout()
 
         buf = io.BytesIO()
@@ -193,7 +214,7 @@ def _render_supply_chart(supply_data: list[dict]) -> io.BytesIO | None:
 
 
 def _render_price_chart(price_data: list[dict]) -> io.BytesIO | None:
-    """매매 및 전세가격지수 추이 꺾은선 그래프 렌더링."""
+    """매매 및 전세가격지수 추이 꺾은선 그래프 렌더링 (한글 지원)."""
     if not price_data or len(price_data) < 2:
         return None
     try:
@@ -207,11 +228,11 @@ def _render_price_chart(price_data: list[dict]) -> io.BytesIO | None:
         ax.set_facecolor("#FFFFFF")
 
         if any(v is not None for v in sale_vals):
-            ax.plot(ym_labels, sale_vals, color="#E74C3C", marker="o", markersize=3.5, lw=1.8, label="Sales Price Index")
+            ax.plot(ym_labels, sale_vals, color="#E74C3C", marker="o", markersize=3.5, lw=1.8, label="매매가격지수")
         if any(v is not None for v in jeonse_vals):
-            ax.plot(ym_labels, jeonse_vals, color="#3498DB", marker="s", markersize=3.5, lw=1.8, label="Jeonse Price Index")
+            ax.plot(ym_labels, jeonse_vals, color="#3498DB", marker="s", markersize=3.5, lw=1.8, label="전세가격지수")
 
-        ax.set_ylabel("Price Index", fontsize=8)
+        ax.set_ylabel("가격지수", fontsize=8)
         ax.tick_params(axis="x", rotation=30, labelsize=7)
         ax.tick_params(axis="y", labelsize=7)
         handles, labels = ax.get_legend_handles_labels()
@@ -219,7 +240,7 @@ def _render_price_chart(price_data: list[dict]) -> io.BytesIO | None:
             ax.legend(fontsize=7.5, loc="upper left")
         ax.grid(True, linestyle="--", alpha=0.35)
 
-        plt.title("Apartment Price Index Trends (REB)", fontsize=9, fontweight="bold", pad=8)
+        plt.title("아파트 매매·전세 가격지수 추이 (한국부동산원)", fontsize=9, fontweight="bold", pad=8)
         plt.tight_layout()
 
         buf = io.BytesIO()
