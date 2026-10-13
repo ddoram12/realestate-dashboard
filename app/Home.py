@@ -372,3 +372,22 @@ with st.expander("📋 전체 도시 분석표", expanded=False):
             "종합점수": st.column_config.TextColumn("종합점수", width="small"),
         },
     )
+
+st.divider()
+with st.expander("🔍 전국 분석 데이터 공식 출처 및 수집 근거 안내", expanded=False):
+    st.markdown(
+        """
+        본 대시보드는 **대한민국 정부 공공기관 공식 OpenAPI**를 통해 100% 실시간 수집·검증된 공공데이터만을 기반으로 작동합니다.
+
+        | 구분 | 지표 항목 | 제공 기관 및 공식 시스템 | 원천 통계표 / API 명 | 공식 확인 링크 |
+        | :--- | :--- | :--- | :--- | :--- |
+        | **수요** | 인구수 / 세대수 | 통계청 · 행정안전부 (KOSIS) | `DT_1B040A3` (주민등록 총인구) / `DT_1B040B3` (세대수) | [KOSIS 국가통계포털](https://kosis.kr) |
+        | **수요** | 개발·기업유치 뉴스 | 네이버 뉴스 검색 API | 최근 12개월 경제/부동산 섹션 핵심 키워드 | [네이버 뉴스](https://news.naver.com) |
+        | **공급** | 미분양 주택 현황 | 국토교통부 · 한국부동산원 | R-One 부동산통계정보시스템 `T237973129847263` | [부동산원 R-One](https://www.reb.or.kr/r-one/main.do) · [국토부 통계누리](https://stat.molit.go.kr) |
+        | **공급** | 연도별 분양/입주물량 | 한국부동산원 청약홈 | 공공데이터포털 `getAPTLttotPblancDetail` | [청약홈](https://www.applyhome.co.kr) |
+        | **시장** | 아파트 청약 경쟁률 | 한국부동산원 청약홈 | 공공데이터포털 `getAPTLttotPblancCmpet` | [청약홈 분양정보](https://www.applyhome.co.kr) |
+        | **가격** | 아파트 매매·전세 가격지수 | 한국부동산원 전국주택가격동향 | R-One `A_2024_00045` (매매) / `A_2024_00050` (전세) | [부동산원 R-One](https://www.reb.or.kr/r-one/main.do) |
+
+        > 💡 각 도시의 상세 화면([도시별 상세])으로 이동하시면 도시별 **원천 코드(행정코드, CLS_ID), 실제 수집된 로우 데이터(Raw Data) 표, 직접 방문 가능한 통계청/부동산원 링크**를 바로 확인하실 수 있습니다.
+        """
+    )

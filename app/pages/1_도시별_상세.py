@@ -34,6 +34,7 @@ from app.utils import (  # noqa: E402
     signal_badge,
 )
 from config.cities import CITIES  # noqa: E402
+from config.reb_cls_map import REB_CLS_TO_CITY  # noqa: E402
 
 st.set_page_config(
     page_title="도시별 상세 분석",
@@ -181,6 +182,30 @@ with tab1:
     else:
         st.info("인구·세대수 데이터가 없습니다. `--population` 을 실행하세요.")
 
+    with st.expander("🔍 인구·세대수 원천 통계 및 근거 자료 확인"):
+        st.markdown(
+            f"""
+            - **기관 및 통계명**: 통계청 KOSIS 국가통계포털 · 행정안전부 주민등록 인구통계
+            - **조회 대상**: **{city_obj.sido} {city_obj.name}** (통계청 행정구역 코드: `{city_code}`)
+            - **원천 통계표**:
+              - 총인구수: `DT_1B040A3` (주민등록인구현황 - 시군구 월별 총인구수)
+              - 세대수: `DT_1B040B3` (주민등록인구현황 - 시군구 월별 세대수)
+            - **공식 확인 바로가기**: [KOSIS 국가통계포털 (주민등록인구통계)](https://kosis.kr/statHtml/statHtml.do?orgId=101&tblId=DT_1B040A3)
+            """
+        )
+        if pop_data:
+            st.caption("📊 DB에 저장된 최근 월별 원본 수치 (최신순)")
+            raw_pop_df = pd.DataFrame(pop_data).sort_values("ym", ascending=False)
+            st.dataframe(
+                raw_pop_df.rename(columns={
+                    "ym": "연월(YYYYMM)",
+                    "population": "인구수(명)",
+                    "households": "세대수",
+                })[["연월(YYYYMM)", "인구수(명)", "세대수"]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
     st.divider()
 
     # 부동산 수요 신호 뉴스 (4개 카테고리, 각 최대 2건)
@@ -279,6 +304,33 @@ with tab2:
     else:
         st.info("미분양 데이터가 없습니다. `--unsold` 를 실행하세요.")
 
+    with st.expander("🔍 미분양 주택 통계 원천 및 근거 자료 확인"):
+        # CLS_ID 매핑 역조회
+        reb_cls_id = next((k for k, v in REB_CLS_TO_CITY.items() if v == city_code), "—")
+        st.markdown(
+            f"""
+            - **기관 및 통계명**: 국토교통부 · 한국부동산원 부동산통계정보시스템 (R-One)
+            - **조회 대상**: **{city_obj.sido} {city_obj.name}** (부동산원 R-One 지역분류코드 `CLS_ID`: `{reb_cls_id}`)
+            - **원천 통계표**: `T237973129847263` (미분양주택현황 - 시군구·월별 미분양 및 준공후 미분양)
+            - **통계 특성 안내**:
+              - 국토부 미분양 통계는 지자체(시·군청 건축과)에 신고된 주택사업장의 잔여세대를 취합한 공식 자료입니다.
+              - 30세대 이상 일반 아파트뿐만 아니라 도시형생활주택, 임대 후 분양전환 잔여물량, 지자체 일괄 신고분이 포함될 수 있습니다.
+            - **공식 확인 바로가기**: [한국부동산원 R-One 부동산통계정보시스템](https://www.reb.or.kr/r-one/main.do) · [국토교통부 통계누리 (미분양현황)](https://stat.molit.go.kr)
+            """
+        )
+        if unsold_data:
+            st.caption("📊 DB에 저장된 최근 월별 미분양 원본 수치 (최신순)")
+            raw_u_df = pd.DataFrame(unsold_data).sort_values("ym", ascending=False)
+            st.dataframe(
+                raw_u_df.rename(columns={
+                    "ym": "연월(YYYYMM)",
+                    "before_completion": "미분양(호)",
+                    "after_completion": "준공후 미분양(호)",
+                })[["연월(YYYYMM)", "미분양(호)", "준공후 미분양(호)"]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
     st.divider()
     st.subheader("연도별 공급 실적 및 예정 물량")
     supply_data = load_city_supply(city_code)
@@ -321,6 +373,31 @@ with tab2:
             "입주 예정 (세대)": [0] * len(empty_years),
         })
         st.dataframe(empty_s_df, use_container_width=True, hide_index=True)
+
+    with st.expander("🔍 공급 실적·예정 물량 원천 및 근거 자료 확인"):
+        st.markdown(
+            f"""
+            - **기관 및 통계명**: 한국부동산원 청약홈 (공공데이터포털 `odcloud.kr`)
+            - **수집 기준**:
+              - 아파트 분양정보 상세 API (`getAPTLttotPblancDetail`)의 입주예정월(`MVN_PREARNGE_YM`) 및 총공급세대수(`TOT_SUPLY_HSHLDCO`)
+              - 주소 필터: 공급위치 주소에 **`{city_obj.sido} {city_obj.name}`** 포함 단지 전수 취합
+            - **통계 특성 안내**:
+              - 주택공급에 관한 규칙에 따라 입주자모집승인을 받는 30세대 이상 아파트 분양공고 전체를 전수 집계합니다.
+              - 최근 몇 년간 신규 분양공고가 없었던 소도시나 군 지역의 경우 집계 물량이 0세대로 표기됩니다.
+            - **공식 확인 바로가기**: [한국부동산원 청약홈 (분양정보/경쟁률)](https://www.applyhome.co.kr)
+            """
+        )
+        if supply_data:
+            st.caption("📊 DB에 집계된 연도별 공급 실적 및 예정 물량")
+            st.dataframe(
+                pd.DataFrame(supply_data).rename(columns={
+                    "year": "연도",
+                    "completed_units": "준공 세대수",
+                    "planned_units": "입주 예정 세대수",
+                })[["연도", "준공 세대수", "입주 예정 세대수"]],
+                use_container_width=True,
+                hide_index=True,
+            )
 
 
 # ══════════════════════════════════════════════════════════════
@@ -375,6 +452,32 @@ with tab3:
     else:
         st.info("💡 최근 6개월 내 해당 도시에서 진행된 아파트 분양 청약 접수 건이 없습니다.")
 
+    with st.expander("🔍 아파트 청약 경쟁률 원천 및 근거 자료 확인"):
+        st.markdown(
+            f"""
+            - **기관 및 통계명**: 한국부동산원 청약홈 (공공데이터포털)
+            - **조회 대상**: **{city_obj.sido} {city_obj.name}** (최근 6개월 입주자모집공고 건)
+            - **원천 API**:
+              - 분양정보 상세: `getAPTLttotPblancDetail` (주택관리번호, 공급위치, 총공급세대수)
+              - 1순위 청약경쟁률: `getAPTLttotPblancCmpet` (접수건수, 해당지역 순위경쟁률)
+            - **공식 확인 바로가기**: [청약홈 청약당첨·경쟁률 조회](https://www.applyhome.co.kr)
+            """
+        )
+        if sub_data:
+            st.caption("📊 DB에 집계된 최근 6개월 청약 단지별 상세 데이터")
+            st.dataframe(
+                pd.DataFrame(sub_data).rename(columns={
+                    "announce_date": "공고일자",
+                    "complex_name": "단지명",
+                    "house_type": "주택형",
+                    "supply_units": "일반공급세대",
+                    "applicants": "접수건수",
+                    "competition_rate": "경쟁률(:1)",
+                })[["공고일자", "단지명", "주택형", "일반공급세대", "접수건수", "경쟁률(:1)"]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
     st.divider()
     st.subheader("아파트 매매·전세 가격지수 추이 (최근 2년)")
     price_data = load_city_price(city_code)
@@ -424,6 +527,33 @@ with tab3:
                     )
     else:
         st.info("가격 데이터가 없습니다. `--price` 를 실행하세요.")
+
+    with st.expander("🔍 매매·전세 가격지수 원천 및 근거 자료 확인"):
+        st.markdown(
+            f"""
+            - **기관 및 통계명**: 한국부동산원 전국주택가격동향조사 (부동산통계정보시스템 R-One)
+            - **조회 대상**: **{city_obj.sido} {city_obj.name}** (월별 아파트 매매·전세 가격지수, 기준시점=100)
+            - **원천 통계표**:
+              - 아파트 매매가격지수: `A_2024_00045` (월간 전국주택가격동향조사)
+              - 아파트 전세가격지수: `A_2024_00050` (월간 전국주택가격동향조사)
+            - **통계 특성 안내**:
+              - 기준시점(100.0)을 기준으로 가격의 상승/하락 비율을 나타내는 국가승인통계입니다.
+              - 군 지역 등 일부 소규모 지역의 경우 인접 상위 시·도 지수를 준용하거나 격월/분기별 조사가 적용될 수 있습니다.
+            - **공식 확인 바로가기**: [한국부동산원 R-One 아파트 가격동향 통계](https://www.reb.or.kr/r-one/main.do)
+            """
+        )
+        if price_data:
+            st.caption("📊 DB에 저장된 최근 월별 가격지수 원본 수치 (최신순)")
+            raw_p_df = pd.DataFrame(price_data).sort_values("ym", ascending=False)
+            st.dataframe(
+                raw_p_df.rename(columns={
+                    "ym": "연월(YYYYMM)",
+                    "sale_index": "매매가격지수",
+                    "jeonse_index": "전세가격지수",
+                })[["연월(YYYYMM)", "매매가격지수", "전세가격지수"]],
+                use_container_width=True,
+                hide_index=True,
+            )
 
 
 # ══════════════════════════════════════════════════════════════
@@ -546,3 +676,25 @@ with tab4:
         st.error(summary)
 
     st.caption(f"마지막 평가: {sig.get('evaluated_at', '—')[:19]}")
+
+    with st.expander("🔍 종합 판정 기준 및 4대 지표 산출 근거 확인"):
+        st.markdown(
+            f"""
+            ### 📌 4대 투자 신호 판정 기준 및 데이터 소스
+            1. **수요 증가 (demand_up)**:
+               - **근거 통계**: 행정안전부 주민등록 인구/세대수 (통계청 KOSIS)
+               - **판정 기준**: 최근 12개월간 세대수 증가율 > 0% 또는 인구 증가율 > 0%
+            2. **미분양 감소 (unsold_down)**:
+               - **근거 통계**: 국토교통부 · 한국부동산원 미분양주택현황 (R-One `T237973129847263`)
+               - **판정 기준**: 최근 6개월 미분양 추세 기울기 < 0 (감소 추세) 및 총 세대수 대비 미분양 0.2% 이하
+            3. **청약 경쟁 활발 (subscription_hot)**:
+               - **근거 통계**: 한국부동산원 청약홈 아파트 1순위 청약경쟁률 API
+               - **판정 기준**: 최근 6개월간 일반공급 평균 경쟁률 1.0:1 초과
+            4. **가격 상승 (price_up) ⭐필수 조건**:
+               - **근거 통계**: 한국부동산원 월간 전국주택가격동향조사 매매·전세가격지수
+               - **판정 기준**: 매매 및 전세가격지수 모두 최근 9개월 연속 전월 대비 상승
+            
+            ---
+            - **활황 예상지역(Hotspot) 최종 기준**: 필수 조건(가격 상승)을 포함하여 4개 신호 중 **3개 이상 충족** 시 선정.
+            """
+        )
