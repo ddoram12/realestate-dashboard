@@ -1,7 +1,8 @@
 """도시별 종합 분석 보고서 PDF 생성 모듈.
 
 ReportLab을 사용하여 한글 폰트(HYGothic-Medium) 기반의
-수요, 공급, 현 상황, 결론 종합 분석 PDF를 생성합니다.
+수요(인구/세대수 그래프), 공급(미분양/입주물량 막대그래프),
+현 상황(가격지수 추이선), 종합 결론을 모두 포함하는 완성형 A4 보고서 PDF를 생성합니다.
 """
 from __future__ import annotations
 
@@ -27,6 +28,10 @@ try:
         Table,
         TableStyle,
     )
+    from reportlab.graphics.shapes import Drawing, String, Rect, Line
+    from reportlab.graphics.charts.linecharts import HorizontalLineChart
+    from reportlab.graphics.charts.barcharts import VerticalBarChart
+
     # 한글 CID 폰트 등록
     FONT_NAME = "HYGothic-Medium"
     try:
@@ -50,6 +55,159 @@ def _fmt_num(v: int | float | None) -> str:
     return f"{int(v):,}세대" if isinstance(v, (int, float)) else str(v)
 
 
+def _build_pop_chart(pop_data: list[dict]) -> Drawing | None:
+    """인구·세대수 추이 꺾은선 차트 Drawing 생성."""
+    if not pop_data or len(pop_data) < 2:
+        return None
+    # 시간 오름차순 정렬 (최근 최대 12개월)
+    sorted_pop = sorted(pop_data, key=lambda x: x.get("ym", ""))[-12:]
+    
+    cat_names = [f"{r['ym'][2:4]}.{r['ym'][4:]}" for r in sorted_pop]
+    pop_vals = [r.get("population") or 0 for r in sorted_pop]
+    hh_vals = [r.get("households") or 0 for r in sorted_pop]
+
+    # 세대수 차트 생성
+    d = Drawing(510, 115)
+    
+    # 타이틀
+    title = String(40, 100, "■ 세대수 추이 (최근 추이)", fontName=FONT_NAME, fontSize=9, fillColor=colors.HexColor("#2C3E50"))
+    d.add(title)
+
+    chart = HorizontalLineChart()
+    chart.x = 55
+    chart.y = 20
+    chart.height = 70
+    chart.width = 430
+    chart.data = [hh_vals]
+    chart.categoryAxis.categoryNames = cat_names
+    chart.categoryAxis.labels.fontName = FONT_NAME
+    chart.categoryAxis.labels.fontSize = 7
+    chart.categoryAxis.labels.dy = -10
+    
+    min_v = min(hh_vals) if hh_vals else 0
+    max_v = max(hh_vals) if hh_vals else 100
+    chart.valueAxis.valueMin = max(0, min_v - (max_v - min_v) * 0.2 if max_v > min_v else min_v * 0.9)
+    chart.valueAxis.valueMax = max_v + (max_v - min_v) * 0.2 if max_v > min_v else max_v * 1.1
+    chart.valueAxis.labels.fontName = FONT_NAME
+    chart.valueAxis.labels.fontSize = 7
+    
+    chart.lines[0].strokeColor = colors.HexColor("#2ECC71")
+    chart.lines[0].strokeWidth = 2
+    d.add(chart)
+    return d
+
+
+def _build_unsold_chart(unsold_data: list[dict]) -> Drawing | None:
+    """월별 미분양 현황 막대 차트 Drawing 생성."""
+    if not unsold_data:
+        return None
+    sorted_u = sorted(unsold_data, key=lambda x: x.get("ym", ""))[-10:]
+    cat_names = [f"{r['ym'][2:4]}.{r['ym'][4:]}" for r in sorted_u]
+    u_vals = [r.get("before_completion") or 0 for r in sorted_u]
+
+    d = Drawing(510, 115)
+    title = String(40, 100, "■ 월별 미분양 주택 현황 (호)", fontName=FONT_NAME, fontSize=9, fillColor=colors.HexColor("#2C3E50"))
+    d.add(title)
+
+    chart = VerticalBarChart()
+    chart.x = 45
+    chart.y = 20
+    chart.height = 70
+    chart.width = 440
+    chart.data = [u_vals]
+    chart.categoryAxis.categoryNames = cat_names
+    chart.categoryAxis.labels.fontName = FONT_NAME
+    chart.categoryAxis.labels.fontSize = 7
+    chart.categoryAxis.labels.dy = -10
+
+    max_v = max(u_vals) if u_vals else 10
+    chart.valueAxis.valueMin = 0
+    chart.valueAxis.valueMax = max(10, max_v * 1.25)
+    chart.valueAxis.labels.fontName = FONT_NAME
+    chart.valueAxis.labels.fontSize = 7
+
+    chart.bars[0].fillColor = colors.HexColor("#E67E22")
+    chart.bars[0].strokeColor = colors.HexColor("#D35400")
+    d.add(chart)
+    return d
+
+
+def _build_supply_chart(supply_data: list[dict]) -> Drawing | None:
+    """연도별 공급 실적/예정 물량 막대 차트 Drawing 생성."""
+    if not supply_data:
+        return None
+    sorted_s = sorted(supply_data, key=lambda x: x.get("year", 0))
+    cat_names = [f"{r['year']}년" for r in sorted_s]
+    comp_vals = [r.get("completed_units") or 0 for r in sorted_s]
+    plan_vals = [r.get("planned_units") or 0 for r in sorted_s]
+
+    d = Drawing(510, 115)
+    title = String(40, 100, "■ 연도별 공급 실적(준공) 및 입주 예정 물량 (세대)", fontName=FONT_NAME, fontSize=9, fillColor=colors.HexColor("#2C3E50"))
+    d.add(title)
+
+    chart = VerticalBarChart()
+    chart.x = 45
+    chart.y = 20
+    chart.height = 70
+    chart.width = 440
+    chart.data = [comp_vals, plan_vals]
+    chart.categoryAxis.categoryNames = cat_names
+    chart.categoryAxis.labels.fontName = FONT_NAME
+    chart.categoryAxis.labels.fontSize = 7
+    chart.categoryAxis.labels.dy = -10
+
+    max_v = max(max(comp_vals + [0]), max(plan_vals + [0]))
+    chart.valueAxis.valueMin = 0
+    chart.valueAxis.valueMax = max(100, max_v * 1.25)
+    chart.valueAxis.labels.fontName = FONT_NAME
+    chart.valueAxis.labels.fontSize = 7
+
+    chart.bars[0].fillColor = colors.HexColor("#3498DB")
+    chart.bars[1].fillColor = colors.HexColor("#BDC3C7")
+    d.add(chart)
+    return d
+
+
+def _build_price_chart(price_data: list[dict]) -> Drawing | None:
+    """매매 및 전세가격지수 추이 꺾은선 차트 Drawing 생성."""
+    if not price_data or len(price_data) < 2:
+        return None
+    sorted_p = sorted(price_data, key=lambda x: x.get("ym", ""))[-12:]
+    cat_names = [f"{r['ym'][2:4]}.{r['ym'][4:]}" for r in sorted_p]
+    sale_vals = [r.get("sale_index") or 100.0 for r in sorted_p]
+    jeonse_vals = [r.get("jeonse_index") or 100.0 for r in sorted_p]
+
+    d = Drawing(510, 120)
+    title = String(40, 105, "■ 아파트 매매(빨강)·전세(파랑) 가격지수 추이", fontName=FONT_NAME, fontSize=9, fillColor=colors.HexColor("#2C3E50"))
+    d.add(title)
+
+    chart = HorizontalLineChart()
+    chart.x = 50
+    chart.y = 20
+    chart.height = 75
+    chart.width = 435
+    chart.data = [sale_vals, jeonse_vals]
+    chart.categoryAxis.categoryNames = cat_names
+    chart.categoryAxis.labels.fontName = FONT_NAME
+    chart.categoryAxis.labels.fontSize = 7
+    chart.categoryAxis.labels.dy = -10
+
+    all_vals = sale_vals + jeonse_vals
+    min_v = min(all_vals) if all_vals else 95.0
+    max_v = max(all_vals) if all_vals else 105.0
+    chart.valueAxis.valueMin = min_v - (max_v - min_v) * 0.15 if max_v > min_v else min_v - 2
+    chart.valueAxis.valueMax = max_v + (max_v - min_v) * 0.15 if max_v > min_v else max_v + 2
+    chart.valueAxis.labels.fontName = FONT_NAME
+    chart.valueAxis.labels.fontSize = 7
+
+    chart.lines[0].strokeColor = colors.HexColor("#E74C3C")
+    chart.lines[0].strokeWidth = 2
+    chart.lines[1].strokeColor = colors.HexColor("#3498DB")
+    chart.lines[1].strokeWidth = 1.5
+    d.add(chart)
+    return d
+
+
 def generate_city_pdf(
     city_obj: Any,
     sig: dict | None,
@@ -62,17 +220,16 @@ def generate_city_pdf(
 ) -> bytes:
     """도시의 수요, 공급, 현상황, 결론을 포함하는 종합 PDF 바이너리 반환."""
     if not HAS_REPORTLAB:
-        # reportlab 이 설치되지 않았거나 설치 중일 때 None 반환
         return b""
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=15 * mm,
-        rightMargin=15 * mm,
-        topMargin=15 * mm,
-        bottomMargin=15 * mm,
+        leftMargin=14 * mm,
+        rightMargin=14 * mm,
+        topMargin=13 * mm,
+        bottomMargin=13 * mm,
     )
 
     styles = getSampleStyleSheet()
@@ -80,8 +237,8 @@ def generate_city_pdf(
     title_style = ParagraphStyle(
         "PDFTitle",
         fontName=FONT_NAME,
-        fontSize=20,
-        leading=26,
+        fontSize=18,
+        leading=24,
         textColor=colors.HexColor("#1A252F"),
         alignment=0,
     )
@@ -89,34 +246,34 @@ def generate_city_pdf(
     h1_style = ParagraphStyle(
         "PDFH1",
         fontName=FONT_NAME,
-        fontSize=13,
-        leading=18,
+        fontSize=12,
+        leading=16,
         textColor=colors.HexColor("#2C3E50"),
-        spaceBefore=10,
-        spaceAfter=4,
+        spaceBefore=8,
+        spaceAfter=3,
     )
 
     body_style = ParagraphStyle(
         "PDFBody",
         fontName=FONT_NAME,
-        fontSize=9,
-        leading=13,
+        fontSize=8.5,
+        leading=12,
         textColor=colors.HexColor("#333333"),
     )
 
     small_style = ParagraphStyle(
         "PDFSmall",
         fontName=FONT_NAME,
-        fontSize=8,
-        leading=11,
+        fontSize=7.5,
+        leading=10,
         textColor=colors.HexColor("#7F8C8D"),
     )
 
     tbl_header_style = ParagraphStyle(
         "PDFTblHeader",
         fontName=FONT_NAME,
-        fontSize=8.5,
-        leading=11,
+        fontSize=8,
+        leading=10,
         textColor=colors.white,
         alignment=1,
     )
@@ -124,8 +281,8 @@ def generate_city_pdf(
     tbl_cell_style = ParagraphStyle(
         "PDFTblCell",
         fontName=FONT_NAME,
-        fontSize=8,
-        leading=11,
+        fontSize=7.5,
+        leading=10,
         textColor=colors.HexColor("#2C3E50"),
         alignment=1,
     )
@@ -133,8 +290,8 @@ def generate_city_pdf(
     tbl_cell_left = ParagraphStyle(
         "PDFTblCellLeft",
         fontName=FONT_NAME,
-        fontSize=8,
-        leading=11,
+        fontSize=7.5,
+        leading=10,
         textColor=colors.HexColor("#2C3E50"),
         alignment=0,
     )
@@ -149,14 +306,14 @@ def generate_city_pdf(
             Paragraph(f"발행일시: {now_str}<br/>인구수: {city_obj.population:,}명", small_style),
         ]
     ]
-    t_head = Table(header_tbl_data, colWidths=[120 * mm, 60 * mm])
+    t_head = Table(header_tbl_data, colWidths=[125 * mm, 57 * mm])
     t_head.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('ALIGN', (1,0), (1,0), 'RIGHT'),
     ]))
     story.append(t_head)
-    story.append(Spacer(1, 4 * mm))
-    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2980B9"), spaceAfter=5 * mm))
+    story.append(Spacer(1, 3 * mm))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#2980B9"), spaceAfter=4 * mm))
 
     # 종합 판정 결과 배지 & 테이블
     score = int(sig.get("total_score", 0)) if sig else 0
@@ -178,19 +335,25 @@ def generate_city_pdf(
             )
         ]
     ]
-    t_sum = Table(summary_box_data, colWidths=[180 * mm])
+    t_sum = Table(summary_box_data, colWidths=[182 * mm])
     t_sum.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F8F9FA")),
         ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#BDC3C7")),
-        ('PADDING', (0,0), (-1,-1), 6),
+        ('PADDING', (0,0), (-1,-1), 5),
     ]))
     story.append(t_sum)
-    story.append(Spacer(1, 4 * mm))
+    story.append(Spacer(1, 3 * mm))
 
     # ── 2. [수요 분석] ──────────────────────────────────────────
-    story.append(Paragraph("<b>1. 수요 분석 (인구·세대수 및 개발 호재)</b>", h1_style))
-    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#BDC3C7"), spaceAfter=3 * mm))
+    story.append(Paragraph("<b>1. 수요 분석 (인구·세대수 그래프 및 개발 호재)</b>", h1_style))
+    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#BDC3C7"), spaceAfter=2 * mm))
     
+    # 세대수 차트
+    pop_chart = _build_pop_chart(pop_data)
+    if pop_chart:
+        story.append(pop_chart)
+        story.append(Spacer(1, 1 * mm))
+
     # 최근 6개월 인구·세대수 표
     pop_sorted = sorted(pop_data, key=lambda x: x.get("ym", ""), reverse=True)[:6]
     if pop_sorted:
@@ -210,12 +373,12 @@ def generate_city_pdf(
                 Paragraph(f"{r.get('households', 0):,}세대" if r.get('households') else "—", tbl_cell_style),
                 Paragraph(growth_str, tbl_cell_style),
             ])
-        t_pop = Table(p_rows, colWidths=[40 * mm, 45 * mm, 45 * mm, 50 * mm])
+        t_pop = Table(p_rows, colWidths=[40 * mm, 45 * mm, 45 * mm, 52 * mm])
         t_pop.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#34495E")),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E0E0E0")),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#FDFDFD")]),
-            ('PADDING', (0,0), (-1,-1), 3.5),
+            ('PADDING', (0,0), (-1,-1), 2.5),
         ]))
         story.append(t_pop)
     else:
@@ -223,19 +386,25 @@ def generate_city_pdf(
 
     story.append(Spacer(1, 2 * mm))
 
-    # 주요 개발 뉴스 (최대 4건)
+    # 주요 개발 뉴스 (최대 3건)
     if news_data:
         story.append(Paragraph("<b>주요 개발 및 기업유치 뉴스 (최근 12개월)</b>", body_style))
-        for n in news_data[:4]:
+        for n in news_data[:3]:
             pub = (n.get("published_at") or "")[:10]
             title = n.get("title", "").replace("<b>", "").replace("</b>", "").replace("&quot;", "\"")
             cat = (n.get("keyword_hits") or "개발사업").split(",")[0]
             story.append(Paragraph(f"• <b>[{cat}]</b> {title} <font color='#7F8C8D'>({pub})</font>", small_style))
-    story.append(Spacer(1, 4 * mm))
+    story.append(Spacer(1, 3 * mm))
 
     # ── 3. [공급 분석] ──────────────────────────────────────────
-    story.append(Paragraph("<b>2. 공급 분석 (미분양 현황 및 향후 입주물량)</b>", h1_style))
-    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#BDC3C7"), spaceAfter=3 * mm))
+    story.append(Paragraph("<b>2. 공급 분석 (미분양 현황 및 향후 입주물량 그래프)</b>", h1_style))
+    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#BDC3C7"), spaceAfter=2 * mm))
+
+    # 미분양 차트
+    unsold_chart = _build_unsold_chart(unsold_data)
+    if unsold_chart:
+        story.append(unsold_chart)
+        story.append(Spacer(1, 1 * mm))
 
     # 미분양 최근 6개월 표
     unsold_sorted = sorted(unsold_data, key=lambda x: x.get("ym", ""), reverse=True)[:6]
@@ -258,12 +427,12 @@ def generate_city_pdf(
                 Paragraph(after_str, tbl_cell_style),
                 Paragraph(slope_str if i == 0 else "—", tbl_cell_style),
             ])
-        t_unsold = Table(u_rows, colWidths=[40 * mm, 45 * mm, 45 * mm, 50 * mm])
+        t_unsold = Table(u_rows, colWidths=[40 * mm, 45 * mm, 45 * mm, 52 * mm])
         t_unsold.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#E67E22")),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E0E0E0")),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#FDFDFD")]),
-            ('PADDING', (0,0), (-1,-1), 3.5),
+            ('PADDING', (0,0), (-1,-1), 2.5),
         ]))
         story.append(t_unsold)
     else:
@@ -271,7 +440,13 @@ def generate_city_pdf(
 
     story.append(Spacer(1, 2 * mm))
 
-    # 연도별 공급 실적/예정 물량
+    # 연도별 공급 차트
+    supply_chart = _build_supply_chart(supply_data)
+    if supply_chart:
+        story.append(supply_chart)
+        story.append(Spacer(1, 1 * mm))
+
+    # 연도별 공급 실적/예정 물량 표
     if supply_data:
         s_rows = [[
             Paragraph("연도", tbl_header_style),
@@ -288,21 +463,27 @@ def generate_city_pdf(
                 Paragraph(f"{p_u:,}", tbl_cell_style),
                 Paragraph(f"{c_u + p_u:,}", tbl_cell_style),
             ])
-        t_sup = Table(s_rows, colWidths=[40 * mm, 45 * mm, 45 * mm, 50 * mm])
+        t_sup = Table(s_rows, colWidths=[40 * mm, 45 * mm, 45 * mm, 52 * mm])
         t_sup.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2980B9")),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E0E0E0")),
-            ('PADDING', (0,0), (-1,-1), 3.5),
+            ('PADDING', (0,0), (-1,-1), 2.5),
         ]))
         story.append(t_sup)
     else:
         story.append(Paragraph("💡 최근 분석 기간 내 한국부동산원 청약홈에 등록된 신규 분양/입주물량이 없는 지역입니다 (공급 0세대).", body_style))
 
-    story.append(Spacer(1, 4 * mm))
+    story.append(Spacer(1, 3 * mm))
 
     # ── 4. [현 상황 분석] ────────────────────────────────────────
-    story.append(Paragraph("<b>3. 현 상황 분석 (청약 경쟁률 및 가격지수 동향)</b>", h1_style))
-    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#BDC3C7"), spaceAfter=3 * mm))
+    story.append(Paragraph("<b>3. 현 상황 분석 (청약 경쟁률 및 가격지수 그래프)</b>", h1_style))
+    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#BDC3C7"), spaceAfter=2 * mm))
+
+    # 가격지수 차트
+    price_chart = _build_price_chart(price_data)
+    if price_chart:
+        story.append(price_chart)
+        story.append(Spacer(1, 1 * mm))
 
     # 최근 청약 단지 (최대 3건)
     if sub_data:
@@ -321,52 +502,21 @@ def generate_city_pdf(
                 Paragraph(f"{r.get('supply_units', 0):,}세대", tbl_cell_style),
                 Paragraph(rate_str, tbl_cell_style),
             ])
-        t_sub = Table(sub_rows, colWidths=[35 * mm, 80 * mm, 30 * mm, 35 * mm])
+        t_sub = Table(sub_rows, colWidths=[35 * mm, 80 * mm, 32 * mm, 35 * mm])
         t_sub.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#27AE60")),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E0E0E0")),
-            ('PADDING', (0,0), (-1,-1), 3.5),
+            ('PADDING', (0,0), (-1,-1), 2.5),
         ]))
         story.append(t_sub)
     else:
         story.append(Paragraph("💡 최근 6개월 내 진행된 아파트 청약 접수 건이 없습니다.", body_style))
 
-    story.append(Spacer(1, 2 * mm))
-
-    # 최근 6개월 가격지수
-    price_sorted = sorted(price_data, key=lambda x: x.get("ym", ""), reverse=True)[:6]
-    if price_sorted:
-        pr_rows = [[
-            Paragraph("연월", tbl_header_style),
-            Paragraph("매매가격지수", tbl_header_style),
-            Paragraph("전세가격지수", tbl_header_style),
-            Paragraph("전년동기대비(매매)", tbl_header_style)
-        ]]
-        sale_yoy = detail.get("sale_yoy") if sig else None
-        for i, r in enumerate(price_sorted):
-            s_idx = r.get("sale_index")
-            j_idx = r.get("jeonse_index")
-            pr_rows.append([
-                Paragraph(f"{r['ym'][:4]}.{r['ym'][4:]}", tbl_cell_style),
-                Paragraph(f"{s_idx:.2f}" if s_idx else "—", tbl_cell_style),
-                Paragraph(f"{j_idx:.2f}" if j_idx else "—", tbl_cell_style),
-                Paragraph(_fmt_rate(sale_yoy) if i == 0 else "—", tbl_cell_style),
-            ])
-        t_pr = Table(pr_rows, colWidths=[40 * mm, 45 * mm, 45 * mm, 50 * mm])
-        t_pr.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#C0392B")),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E0E0E0")),
-            ('PADDING', (0,0), (-1,-1), 3.5),
-        ]))
-        story.append(t_pr)
-    else:
-        story.append(Paragraph("수집된 가격지수 통계가 없습니다.", body_style))
-
-    story.append(Spacer(1, 4 * mm))
+    story.append(Spacer(1, 3 * mm))
 
     # ── 5. [결론 및 원천 근거] ────────────────────────────────────
     story.append(Paragraph("<b>4. 종합 투자 판정 및 데이터 원천 안내</b>", h1_style))
-    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#BDC3C7"), spaceAfter=3 * mm))
+    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#BDC3C7"), spaceAfter=2 * mm))
     
     conclusion_text = (
         f"<b>{city_obj.name}</b> 지역은 4대 핵심 투자 신호 중 <b>{score}개 신호를 충족</b>하고 있습니다. "
@@ -376,11 +526,11 @@ def generate_city_pdf(
         f"• 미분양/가격지수: 국토교통부 · 한국부동산원 부동산통계정보시스템 R-One (T237973129847263, A_2024_00045)<br/>"
         f"• 공급/청약경쟁률: 한국부동산원 청약홈 공공데이터포털 OpenAPI"
     )
-    t_concl = Table([[Paragraph(conclusion_text, body_style)]], colWidths=[180 * mm])
+    t_concl = Table([[Paragraph(conclusion_text, body_style)]], colWidths=[182 * mm])
     t_concl.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F4F6F6")),
         ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#BDC3C7")),
-        ('PADDING', (0,0), (-1,-1), 6),
+        ('PADDING', (0,0), (-1,-1), 5),
     ]))
     story.append(t_concl)
 
