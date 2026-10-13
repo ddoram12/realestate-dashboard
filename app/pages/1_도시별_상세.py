@@ -311,7 +311,15 @@ with tab2:
             use_container_width=True, hide_index=True,
         )
     else:
-        st.info("공급 실적·예정 데이터가 없습니다. `--supply` 를 실행하세요.")
+        st.info("💡 최근 분석 기간 내 한국부동산원 청약홈에 등록된 분양·입주 예정 아파트 물량이 없습니다. (신규 민간/공공 분양 공급이 없었던 지역입니다)")
+        # 빈 연도별 0 공급 현황 테이블 표시
+        empty_years = [date.today().year + i for i in range(-2, 3)]
+        empty_s_df = pd.DataFrame({
+            "연도": empty_years,
+            "준공 실적 (세대)": [0] * len(empty_years),
+            "입주 예정 (세대)": [0] * len(empty_years),
+        })
+        st.dataframe(empty_s_df, use_container_width=True, hide_index=True)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -364,7 +372,7 @@ with tab3:
                                    coloraxis_showscale=False)
             st.plotly_chart(fig_rate, use_container_width=True)
     else:
-        st.info("청약 데이터가 없습니다. `--subscription` 을 실행하세요.")
+        st.info("💡 최근 6개월 내 해당 도시에서 진행된 아파트 분양 청약 접수 건이 없습니다.")
 
     st.divider()
     st.subheader("아파트 매매·전세 가격지수 추이 (최근 2년)")
