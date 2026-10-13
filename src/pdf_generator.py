@@ -19,22 +19,8 @@ try:
     import matplotlib.pyplot as plt
     import matplotlib.font_manager as fm
 
-    # 한글 폰트 설정 (Windows, Linux, macOS 대응)
-    nanum_paths = fm.findSystemFonts(fontpaths=None, fontext="ttf")
-    for fp in nanum_paths:
-        if "nanum" in fp.lower() or "malgun" in fp.lower():
-            try:
-                fm.fontManager.addfont(fp)
-            except Exception:
-                pass
-
-    available_fonts = [f.name for f in fm.fontManager.ttflist]
-    chosen_font = "DejaVu Sans"
-    for candidate in ["Malgun Gothic", "NanumGothic", "NanumBarunGothic", "AppleGothic", "Noto Sans CJK KR", "Gulim", "Batang"]:
-        if candidate in available_fonts:
-            chosen_font = candidate
-            break
-    matplotlib.rcParams["font.family"] = chosen_font
+    # Matplotlib 폰트 및 백엔드 설정 (어떤 OS에서도 폰트 오류 없이 작동)
+    matplotlib.rcParams["font.family"] = "sans-serif"
     matplotlib.rcParams["axes.unicode_minus"] = False
 
     from reportlab.lib import colors
@@ -54,7 +40,7 @@ try:
         TableStyle,
     )
 
-    # 한글 CID 폰트 등록
+    # 한글 CID 폰트 등록 (ReportLab 기본 한글)
     FONT_NAME = "HYGothic-Medium"
     try:
         pdfmetrics.registerFont(UnicodeCIDFont(FONT_NAME))
@@ -90,33 +76,35 @@ def _render_pop_chart(pop_data: list[dict]) -> io.BytesIO | None:
         hh_vals = [r.get("households") or 0 for r in sorted_pop]
         pop_vals = [r.get("population") or 0 for r in sorted_pop]
 
-        fig, ax1 = plt.subplots(figsize=(6.5, 2.2), dpi=150)
+        fig, ax1 = plt.subplots(figsize=(6.5, 2.2), dpi=140)
         fig.patch.set_facecolor("#FAFAFA")
         ax1.set_facecolor("#FFFFFF")
 
         color_hh = "#2ECC71"
-        ax1.plot(ym_labels, hh_vals, color=color_hh, marker="o", markersize=4, lw=2, label="세대수")
-        ax1.set_ylabel("세대수", color=color_hh, fontsize=8)
+        ax1.plot(ym_labels, hh_vals, color=color_hh, marker="o", markersize=4, lw=2, label="Households")
+        ax1.set_ylabel("Households", color=color_hh, fontsize=8)
         ax1.tick_params(axis="y", labelcolor=color_hh, labelsize=7)
         ax1.tick_params(axis="x", rotation=30, labelsize=7)
-        ax1.grid(True, linestyle="--", alpha=0.4)
+        ax1.grid(True, linestyle="--", alpha=0.35)
 
         if any(pop_vals):
             ax2 = ax1.twinx()
             color_pop = "#3498DB"
-            ax2.plot(ym_labels, pop_vals, color=color_pop, marker="s", markersize=3, lw=1.5, linestyle=":", label="인구수")
-            ax2.set_ylabel("인구(명)", color=color_pop, fontsize=8)
+            ax2.plot(ym_labels, pop_vals, color=color_pop, marker="s", markersize=3, lw=1.5, linestyle=":", label="Population")
+            ax2.set_ylabel("Population", color=color_pop, fontsize=8)
             ax2.tick_params(axis="y", labelcolor=color_pop, labelsize=7)
 
-        plt.title("월별 인구 및 세대수 추이", fontsize=9, fontweight="bold", pad=8)
+        plt.title("Population & Households Trend", fontsize=9, fontweight="bold", pad=8)
         plt.tight_layout()
 
         buf = io.BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight")
         plt.close(fig)
+        plt.close("all")
         buf.seek(0)
         return buf
     except Exception:
+        plt.close("all")
         return None
 
 
@@ -129,34 +117,36 @@ def _render_unsold_chart(unsold_data: list[dict]) -> io.BytesIO | None:
         ym_labels = [f"{r['ym'][2:4]}.{r['ym'][4:]}" for r in sorted_u]
         u_vals = [r.get("before_completion") or 0 for r in sorted_u]
 
-        fig, ax = plt.subplots(figsize=(6.5, 2.0), dpi=150)
+        fig, ax = plt.subplots(figsize=(6.5, 2.0), dpi=140)
         fig.patch.set_facecolor("#FAFAFA")
         ax.set_facecolor("#FFFFFF")
 
-        bars = ax.bar(ym_labels, u_vals, color="#E67E22", width=0.55, edgecolor="#D35400", label="미분양(호)")
-        ax.set_ylabel("호수", fontsize=8)
+        bars = ax.bar(ym_labels, u_vals, color="#E67E22", width=0.52, edgecolor="#D35400", label="Unsold Units")
+        ax.set_ylabel("Units", fontsize=8)
         ax.tick_params(axis="x", rotation=30, labelsize=7)
         ax.tick_params(axis="y", labelsize=7)
-        ax.grid(axis="y", linestyle="--", alpha=0.4)
+        ax.grid(axis="y", linestyle="--", alpha=0.35)
 
         for bar in bars:
             height = bar.get_height()
             if height > 0:
-                ax.annotate(f"{int(height)}",
+                ax.annotate(f"{int(height):,}",
                             xy=(bar.get_x() + bar.get_width() / 2, height),
                             xytext=(0, 2),
                             textcoords="offset points",
                             ha="center", va="bottom", fontsize=6.5)
 
-        plt.title("월별 미분양 주택 현황 추이", fontsize=9, fontweight="bold", pad=8)
+        plt.title("Monthly Unsold Housing Units Trend", fontsize=9, fontweight="bold", pad=8)
         plt.tight_layout()
 
         buf = io.BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight")
         plt.close(fig)
+        plt.close("all")
         buf.seek(0)
         return buf
     except Exception:
+        plt.close("all")
         return None
 
 
@@ -166,7 +156,7 @@ def _render_supply_chart(supply_data: list[dict]) -> io.BytesIO | None:
         return None
     try:
         sorted_s = sorted(supply_data, key=lambda x: x.get("year", 0))
-        years = [f"{r['year']}년" for r in sorted_s]
+        years = [str(r["year"]) for r in sorted_s]
         comp_vals = [r.get("completed_units") or 0 for r in sorted_s]
         plan_vals = [r.get("planned_units") or 0 for r in sorted_s]
 
@@ -174,29 +164,31 @@ def _render_supply_chart(supply_data: list[dict]) -> io.BytesIO | None:
         x = np.arange(len(years))
         width = 0.35
 
-        fig, ax = plt.subplots(figsize=(6.5, 2.0), dpi=150)
+        fig, ax = plt.subplots(figsize=(6.5, 2.0), dpi=140)
         fig.patch.set_facecolor("#FAFAFA")
         ax.set_facecolor("#FFFFFF")
 
-        ax.bar(x - width/2, comp_vals, width, label="준공 실적", color="#3498DB")
-        ax.bar(x + width/2, plan_vals, width, label="입주 예정", color="#BDC3C7")
+        ax.bar(x - width/2, comp_vals, width, label="Completed", color="#3498DB")
+        ax.bar(x + width/2, plan_vals, width, label="Planned", color="#BDC3C7")
 
-        ax.set_ylabel("세대수", fontsize=8)
+        ax.set_ylabel("Units", fontsize=8)
         ax.set_xticks(x)
         ax.set_xticklabels(years, fontsize=7.5)
         ax.tick_params(axis="y", labelsize=7)
         ax.legend(fontsize=7.5, loc="upper right")
-        ax.grid(axis="y", linestyle="--", alpha=0.4)
+        ax.grid(axis="y", linestyle="--", alpha=0.35)
 
-        plt.title("연도별 공급 실적 및 예정 물량", fontsize=9, fontweight="bold", pad=8)
+        plt.title("Annual Housing Supply (Completed vs Planned)", fontsize=9, fontweight="bold", pad=8)
         plt.tight_layout()
 
         buf = io.BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight")
         plt.close(fig)
+        plt.close("all")
         buf.seek(0)
         return buf
     except Exception:
+        plt.close("all")
         return None
 
 
@@ -210,32 +202,34 @@ def _render_price_chart(price_data: list[dict]) -> io.BytesIO | None:
         sale_vals = [r.get("sale_index") for r in sorted_p]
         jeonse_vals = [r.get("jeonse_index") for r in sorted_p]
 
-        fig, ax = plt.subplots(figsize=(6.5, 2.1), dpi=150)
+        fig, ax = plt.subplots(figsize=(6.5, 2.1), dpi=140)
         fig.patch.set_facecolor("#FAFAFA")
         ax.set_facecolor("#FFFFFF")
 
         if any(v is not None for v in sale_vals):
-            ax.plot(ym_labels, sale_vals, color="#E74C3C", marker="o", markersize=3.5, lw=1.8, label="매매가격지수")
+            ax.plot(ym_labels, sale_vals, color="#E74C3C", marker="o", markersize=3.5, lw=1.8, label="Sales Price Index")
         if any(v is not None for v in jeonse_vals):
-            ax.plot(ym_labels, jeonse_vals, color="#3498DB", marker="s", markersize=3.5, lw=1.8, label="전세가격지수")
+            ax.plot(ym_labels, jeonse_vals, color="#3498DB", marker="s", markersize=3.5, lw=1.8, label="Jeonse Price Index")
 
-        ax.set_ylabel("가격지수", fontsize=8)
+        ax.set_ylabel("Price Index", fontsize=8)
         ax.tick_params(axis="x", rotation=30, labelsize=7)
         ax.tick_params(axis="y", labelsize=7)
         handles, labels = ax.get_legend_handles_labels()
         if labels:
             ax.legend(fontsize=7.5, loc="upper left")
-        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.grid(True, linestyle="--", alpha=0.35)
 
-        plt.title("아파트 매매·전세 가격지수 추이 (한국부동산원)", fontsize=9, fontweight="bold", pad=8)
+        plt.title("Apartment Price Index Trends (REB)", fontsize=9, fontweight="bold", pad=8)
         plt.tight_layout()
 
         buf = io.BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight")
         plt.close(fig)
+        plt.close("all")
         buf.seek(0)
         return buf
     except Exception:
+        plt.close("all")
         return None
 
 

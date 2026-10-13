@@ -117,20 +117,28 @@ supply_data = load_city_supply(city_code)
 sub_data = load_city_subscription(city_code)
 price_data = load_city_price(city_code)
 
-# PDF 보고서 사전 생성 (다운로드 버튼용)
-try:
-    pdf_bytes = generate_city_pdf(
-        city_obj=city_obj,
-        sig=sig,
-        pop_data=pop_data,
-        news_data=news_data,
-        unsold_data=unsold_data,
-        supply_data=supply_data,
-        sub_data=sub_data,
-        price_data=price_data,
-    )
-except Exception as e:
-    pdf_bytes = None
+@st.cache_data(show_spinner=False, ttl=1800)
+def _build_cached_pdf(c_code: str) -> bytes | None:
+    try:
+        c_obj = next((c for c in CITIES if c.code == c_code), None)
+        if not c_obj:
+            return None
+        signals = load_all_signals()
+        s = next((item for item in signals if item["city_code"] == c_code), None)
+        return generate_city_pdf(
+            city_obj=c_obj,
+            sig=s,
+            pop_data=load_city_population(c_code),
+            news_data=load_city_news(c_code),
+            unsold_data=load_city_unsold(c_code),
+            supply_data=load_city_supply(c_code),
+            sub_data=load_city_subscription(c_code),
+            price_data=load_city_price(c_code),
+        )
+    except Exception:
+        return None
+
+pdf_bytes = _build_cached_pdf(city_code)
 
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
