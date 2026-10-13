@@ -28,7 +28,24 @@ from app.utils import (  # noqa: E402
     require_auth,
     signal_badge,
 )
-from config.cities import CITIES, CITY_BY_LABEL, SIDO_SHORT_MAP  # noqa: E402
+import importlib
+import config.cities as cities_mod
+try:
+    importlib.reload(cities_mod)
+except Exception:
+    pass
+
+CITIES = cities_mod.CITIES
+SIDO_SHORT_MAP = getattr(cities_mod, "SIDO_SHORT_MAP", {
+    "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구", "인천광역시": "인천",
+    "광주광역시": "광주", "대전광역시": "대전", "울산광역시": "울산", "세종특별자치시": "세종",
+    "경기도": "경기", "강원특별자치도": "강원", "충청북도": "충북", "충청남도": "충남",
+    "전북특별자치도": "전북", "전라남도": "전남", "경상북도": "경북", "경상남도": "경남",
+    "제주특별자치도": "제주",
+})
+CITY_BY_LABEL = getattr(cities_mod, "CITY_BY_LABEL", {
+    getattr(c, "full_label", f"{SIDO_SHORT_MAP.get(c.sido, c.sido[:2])} {c.name}"): c for c in CITIES
+})
 
 # ── 페이지 설정 ───────────────────────────────────────────────
 st.set_page_config(
