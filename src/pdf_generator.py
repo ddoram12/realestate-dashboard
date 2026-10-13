@@ -9,28 +9,33 @@ import io
 from datetime import datetime
 from typing import Any
 
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-from reportlab.platypus import (
-    HRFlowable,
-    KeepTogether,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
-
-# 한글 CID 폰트 등록
-FONT_NAME = "HYGothic-Medium"
+# ReportLab 라이브러리 가용 여부 확인
+HAS_REPORTLAB = False
 try:
-    pdfmetrics.registerFont(UnicodeCIDFont(FONT_NAME))
-except Exception:
-    FONT_NAME = "Helvetica"
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+    from reportlab.platypus import (
+        HRFlowable,
+        KeepTogether,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+    # 한글 CID 폰트 등록
+    FONT_NAME = "HYGothic-Medium"
+    try:
+        pdfmetrics.registerFont(UnicodeCIDFont(FONT_NAME))
+    except Exception:
+        FONT_NAME = "Helvetica"
+    HAS_REPORTLAB = True
+except ImportError:
+    HAS_REPORTLAB = False
 
 
 def _fmt_rate(v: float | None) -> str:
@@ -56,6 +61,10 @@ def generate_city_pdf(
     price_data: list[dict],
 ) -> bytes:
     """도시의 수요, 공급, 현상황, 결론을 포함하는 종합 PDF 바이너리 반환."""
+    if not HAS_REPORTLAB:
+        # reportlab 이 설치되지 않았거나 설치 중일 때 None 반환
+        return b""
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
