@@ -115,6 +115,13 @@ def _render_pop_chart(pop_data: list[dict]) -> io.BytesIO | None:
             ax2.set_ylabel("인구(명)", color=color_pop, fontsize=8)
             ax2.tick_params(axis="y", labelcolor=color_pop, labelsize=7)
 
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        if any(pop_vals):
+            lines2, labels2 = ax2.get_legend_handles_labels()
+            ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=7.5)
+        elif labels1:
+            ax1.legend(loc="upper left", fontsize=7.5)
+
         plt.title("월별 인구 및 세대수 추이", fontsize=9, fontweight="bold", pad=8)
         plt.tight_layout()
 

@@ -117,8 +117,8 @@ supply_data = load_city_supply(city_code)
 sub_data = load_city_subscription(city_code)
 price_data = load_city_price(city_code)
 
-@st.cache_data(show_spinner=False, ttl=1800)
-def _build_cached_pdf(c_code: str) -> bytes | None:
+@st.cache_data(show_spinner=False, ttl=600)
+def _build_cached_pdf(c_code: str, cache_ver: str = "v3_korean_complete") -> bytes | None:
     try:
         c_obj = next((c for c in CITIES if c.code == c_code), None)
         if not c_obj:
@@ -138,7 +138,7 @@ def _build_cached_pdf(c_code: str) -> bytes | None:
     except Exception:
         return None
 
-pdf_bytes = _build_cached_pdf(city_code)
+pdf_bytes = _build_cached_pdf(city_code, cache_ver="v3_korean_complete")
 
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
