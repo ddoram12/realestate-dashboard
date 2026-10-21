@@ -351,6 +351,16 @@ def generate_city_pdf(
         alignment=0,
     )
 
+    source_style = ParagraphStyle(
+        "PDFSource",
+        fontName=FONT_NAME,
+        fontSize=6.5,
+        leading=8.5,
+        textColor=colors.HexColor("#7F8C8D"),
+        spaceBefore=1,
+        spaceAfter=2,
+    )
+
     story = []
 
     # ── 1. 헤더 & 종합 판정 요약 ─────────────────────────────────
@@ -436,6 +446,7 @@ def generate_city_pdf(
             ('PADDING', (0,0), (-1,-1), 2),
         ]))
         story.append(t_pop)
+        story.append(Paragraph("※ 인구·세대수 출처: 통계청 KOSIS 국가통계포털 · 행정안전부 주민등록인구현황 (통계표: DT_1B040A3, DT_1B040B3)", source_style))
     else:
         story.append(Paragraph("수집된 인구/세대수 데이터가 없습니다.", body_style))
 
@@ -449,7 +460,8 @@ def generate_city_pdf(
             title = n.get("title", "").replace("<b>", "").replace("</b>", "").replace("&quot;", "\"")
             cat = (n.get("keyword_hits") or "개발사업").split(",")[0]
             story.append(Paragraph(f"• <b>[{cat}]</b> {title} <font color='#7F8C8D'>({pub})</font>", small_style))
-    story.append(Spacer(1, 3 * mm))
+        story.append(Paragraph("※ 뉴스 데이터 출처: 네이버 뉴스 검색 API (실시간 키워드 필터링)", source_style))
+    story.append(Spacer(1, 2 * mm))
 
     # ── 3. [공급 분석] ──────────────────────────────────────────
     story.append(Paragraph("<b>2. 공급 분석 (미분양 현황 및 향후 입주물량 그래프)</b>", h1_style))
@@ -490,10 +502,11 @@ def generate_city_pdf(
             ('PADDING', (0,0), (-1,-1), 2),
         ]))
         story.append(t_unsold)
+        story.append(Paragraph("※ 미분양 통계 출처: 국토교통부 · 한국부동산원 부동산통계정보시스템 R-One (통계표: T237973129847263)", source_style))
     else:
         story.append(Paragraph("수집된 미분양 주택 통계 데이터가 없습니다.", body_style))
 
-    story.append(Spacer(1, 2 * mm))
+    story.append(Spacer(1, 1.5 * mm))
 
     # 연도별 공급 차트 이미지 삽입
     supply_chart_buf = _render_supply_chart(supply_data)
@@ -525,10 +538,11 @@ def generate_city_pdf(
             ('PADDING', (0,0), (-1,-1), 2),
         ]))
         story.append(t_sup)
+        story.append(Paragraph("※ 입주물량 통계 출처: 한국부동산원 청약홈 아파트 분양정보상세 API (공공데이터포털)", source_style))
     else:
         story.append(Paragraph("💡 최근 분석 기간 내 한국부동산원 청약홈에 등록된 신규 분양/입주물량이 없는 지역입니다 (공급 0세대).", body_style))
 
-    story.append(Spacer(1, 3 * mm))
+    story.append(Spacer(1, 2 * mm))
 
     # ── 4. [현 상황 분석] ────────────────────────────────────────
     story.append(Paragraph("<b>3. 현 상황 분석 (청약 경쟁률 및 가격지수 그래프)</b>", h1_style))
@@ -538,6 +552,7 @@ def generate_city_pdf(
     price_chart_buf = _render_price_chart(price_data)
     if price_chart_buf:
         story.append(RLImage(price_chart_buf, width=180 * mm, height=55 * mm))
+        story.append(Paragraph("※ 가격지수 통계 출처: 한국부동산원 전국주택가격동향조사 R-One (통계표: A_2024_00045 매매, A_2024_00050 전세)", source_style))
         story.append(Spacer(1, 1.5 * mm))
 
     # 최근 청약 단지 (최대 3건)
@@ -564,10 +579,11 @@ def generate_city_pdf(
             ('PADDING', (0,0), (-1,-1), 2),
         ]))
         story.append(t_sub)
+        story.append(Paragraph("※ 청약경쟁률 통계 출처: 한국부동산원 청약홈 1순위 청약경쟁률 API (공공데이터포털)", source_style))
     else:
         story.append(Paragraph("💡 최근 6개월 내 진행된 아파트 청약 접수 건이 없습니다.", body_style))
 
-    story.append(Spacer(1, 3 * mm))
+    story.append(Spacer(1, 2 * mm))
 
     # ── 5. [결론 및 원천 근거] ────────────────────────────────────
     story.append(Paragraph("<b>4. 종합 투자 판정 및 데이터 원천 안내</b>", h1_style))

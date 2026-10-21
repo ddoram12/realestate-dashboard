@@ -118,7 +118,7 @@ sub_data = load_city_subscription(city_code)
 price_data = load_city_price(city_code)
 
 @st.cache_data(show_spinner=False, ttl=600)
-def _build_cached_pdf(c_code: str, cache_ver: str = "v3_korean_complete") -> bytes | None:
+def _build_cached_pdf(c_code: str, cache_ver: str = "v4_with_sources") -> bytes | None:
     try:
         c_obj = next((c for c in CITIES if c.code == c_code), None)
         if not c_obj:
@@ -138,7 +138,7 @@ def _build_cached_pdf(c_code: str, cache_ver: str = "v3_korean_complete") -> byt
     except Exception:
         return None
 
-pdf_bytes = _build_cached_pdf(city_code, cache_ver="v3_korean_complete")
+pdf_bytes = _build_cached_pdf(city_code, cache_ver="v4_with_sources")
 
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
@@ -226,6 +226,7 @@ with tab1:
     else:
         st.info("인구·세대수 데이터가 없습니다. `--population` 을 실행하세요.")
 
+        st.caption("📊 **데이터 출처**: 통계청 KOSIS 국가통계포털 · 행정안전부 주민등록인구현황 (`DT_1B040A3`, `DT_1B040B3`)")
     with st.expander("🔍 인구·세대수 원천 통계 및 근거 자료 확인"):
         st.markdown(
             f"""
@@ -348,6 +349,7 @@ with tab2:
     else:
         st.info("미분양 데이터가 없습니다. `--unsold` 를 실행하세요.")
 
+        st.caption("📊 **데이터 출처**: 국토교통부 · 한국부동산원 부동산통계정보시스템 R-One (`T237973129847263` 미분양주택현황)")
     with st.expander("🔍 미분양 주택 통계 원천 및 근거 자료 확인"):
         # CLS_ID 매핑 역조회
         reb_cls_id = next((k for k, v in REB_CLS_TO_CITY.items() if v == city_code), "—")
@@ -418,6 +420,7 @@ with tab2:
         })
         st.dataframe(empty_s_df, use_container_width=True, hide_index=True)
 
+        st.caption("📊 **데이터 출처**: 한국부동산원 청약홈 아파트 분양정보상세 API (공공데이터포털 `odcloud.kr`)")
     with st.expander("🔍 공급 실적·예정 물량 원천 및 근거 자료 확인"):
         st.markdown(
             f"""
@@ -496,6 +499,7 @@ with tab3:
     else:
         st.info("💡 최근 6개월 내 해당 도시에서 진행된 아파트 분양 청약 접수 건이 없습니다.")
 
+        st.caption("📊 **데이터 출처**: 한국부동산원 청약홈 1순위 청약경쟁률 API (공공데이터포털)")
     with st.expander("🔍 아파트 청약 경쟁률 원천 및 근거 자료 확인"):
         st.markdown(
             f"""
@@ -572,6 +576,7 @@ with tab3:
     else:
         st.info("가격 데이터가 없습니다. `--price` 를 실행하세요.")
 
+        st.caption("📊 **데이터 출처**: 한국부동산원 전국주택가격동향조사 R-One (`A_2024_00045` 매매가격지수, `A_2024_00050` 전세가격지수)")
     with st.expander("🔍 매매·전세 가격지수 원천 및 근거 자료 확인"):
         st.markdown(
             f"""
